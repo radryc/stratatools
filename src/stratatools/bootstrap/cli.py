@@ -165,6 +165,7 @@ def _install_prereqs(dry_run: bool) -> None:
         dry_run=dry_run,
     )
     for rbac in [
+        PARTITIONS / "guardian-configs" / "guardian-configs-sa-cluster-admin.yaml",
         PARTITIONS / "opentelemetry" / "collector-prometheus-rbac-default-sa.yaml",
         PARTITIONS / "k8s-top" / "metrics-reader-rbac-default-sa.yaml",
         PARTITIONS / "dev-workspace" / "default-sa-cluster-admin.yaml",
