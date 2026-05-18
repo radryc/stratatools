@@ -29,6 +29,10 @@ def _b64(s: str) -> str:
 
 def _vars() -> dict:
     monofs_token = os.environ.get("MONOFS_TOKEN") or secrets.token_urlsafe(32)
+    monofs_encryption_key = os.environ.get(
+        "MONOFS_ENCRYPTION_KEY",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
     minio_ak = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
     minio_sk = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
     return {
@@ -44,6 +48,7 @@ def _vars() -> dict:
         "MONOFS_SEARCH_IMAGE": MONOFS_SEARCH_IMAGE,
         "MINIO_IMAGE": MINIO_IMAGE,
         "MONOFS_TOKEN": _b64(monofs_token),
+        "MONOFS_ENCRYPTION_KEY": _b64(monofs_encryption_key),
         "MINIO_ACCESS_KEY": _b64(minio_ak),
         "MINIO_SECRET_KEY": _b64(minio_sk),
         "SUFFIX": "",
