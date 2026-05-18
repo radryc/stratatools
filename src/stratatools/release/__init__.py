@@ -77,6 +77,7 @@ def _release_one(
     skip_push: bool,
     skip_stamp: bool,
     skip_guardian: bool,
+    reconcile: bool,
     wait: bool,
     dry_run: bool,
 ) -> None:
@@ -100,7 +101,8 @@ def _release_one(
 
     if not skip_guardian:
         _gctl(["partition", "push", "--dir", str(pdir)], dry_run)
-        _gctl(["partition", "reconcile", "--partition", p], dry_run)
+        if reconcile:
+            _gctl(["partition", "reconcile", "--partition", p], dry_run)
         if wait:
             _gctl(["partition", "wait", "--partition", p], dry_run)
     # TODO: annotate-release OTLP event (skipped in port)
@@ -124,6 +126,9 @@ def main(
     skip_guardian: bool = typer.Option(
         False, "--skip-guardian", help="Skip guardianctl push/reconcile/wait."
     ),
+    reconcile: bool = typer.Option(
+        False, "--reconcile", help="Run `guardianctl partition reconcile` after push (guardian auto-reconciles without this)."
+    ),
     wait: bool = typer.Option(
         False, "--wait", help="After reconcile, wait for partition convergence."
     ),
@@ -141,6 +146,7 @@ def main(
             skip_push=skip_push,
             skip_stamp=skip_stamp,
             skip_guardian=skip_guardian,
+            reconcile=reconcile,
             wait=wait,
             dry_run=dry_run,
         )
