@@ -1,1 +1,1 @@
-image: dev-workspace-vscode:sha256-242e02150eb62d382d54aca7db732be6780dcd062e6127104ffcf5e794cafd1c
+image: dev-workspace-vscode:latest

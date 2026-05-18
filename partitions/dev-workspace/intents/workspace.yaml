@@ -12,25 +12,25 @@ spec:
     assets:
         - type: Volume
           name: workspace-data
-          version: 20260515-1525
+          version: 20260518-1410
           properties:
             accessMode: ReadWriteOnce
             size: 20Gi
         - type: Volume
           name: monofs-state
-          version: 20260515-1525
+          version: 20260518-1410
           properties:
             accessMode: ReadWriteOnce
             size: 10Gi
         - type: Volume
           name: monofs-cache
-          version: 20260515-1525
+          version: 20260518-1410
           properties:
             accessMode: ReadWriteOnce
             size: 10Gi
         - type: Compute
           name: vscode
-          version: 20260515-1525
+          version: 20260518-1410
           dependsOn:
             - workspace-data
             - monofs-state
@@ -53,7 +53,7 @@ spec:
             hostBindMounts:
                 - source: /dev/fuse
                   target: /dev/fuse
-            image: dev-workspace-vscode:sha256-242e02150eb62d382d54aca7db732be6780dcd062e6127104ffcf5e794cafd1c
+            image: dev-workspace-vscode:latest
             imagePullPolicy: IfNotPresent
             ports:
                 - containerPort: 8888
@@ -77,7 +77,7 @@ spec:
                   volume: monofs-cache
         - type: LoadBalancer
           name: vscode-edge
-          version: 20260515-1525
+          version: 20260518-1410
           dependsOn:
             - vscode
           payload:
