@@ -19,3 +19,17 @@ spec:
       containers:
         - name: pusher
           image: ${GUARDIAN_PUSHER_IMAGE}
+          env:
+            - name: GUARDIAN_PUSHER_NAME
+              value: "${GUARDIAN_PUSHER_NAME}"
+            - name: GUARDIAN_CLUSTER
+              value: "${GUARDIAN_CLUSTER}"
+            - name: GUARDIAN_MONOFS_ROUTER
+              value: "${GUARDIAN_MONOFS_ROUTER}"
+            - name: GUARDIAN_MONOFS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: guardian-secrets
+                  key: monofs-token
+            - name: GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES
+              value: "${GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES}"

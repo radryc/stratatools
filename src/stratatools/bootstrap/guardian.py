@@ -18,6 +18,25 @@ GUARDIAN_IMAGE = os.environ.get("GUARDIAN_IMAGE", "guardian:latest")
 GUARDIAN_PUSHER_IMAGE = os.environ.get(
     "GUARDIAN_PUSHER_IMAGE", "guardian-pusher-k8s:latest"
 )
+GUARDIAN_MONOFS_ROUTER = os.environ.get(
+    "GUARDIAN_MONOFS_ROUTER",
+    f"monofs-external.{STORAGE_NAMESPACE}.svc.cluster.local:9090",
+)
+GUARDIAN_MONOFS_CLIENT_API_ENDPOINT = os.environ.get(
+    "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", GUARDIAN_MONOFS_ROUTER
+)
+GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES = os.environ.get(
+    "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES", "false"
+)
+GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES = os.environ.get(
+    "GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES", "true"
+)
+GUARDIAN_PUSHER_NAME = os.environ.get("GUARDIAN_PUSHER_NAME", "k8s-main")
+GUARDIAN_CLUSTER = os.environ.get("GUARDIAN_CLUSTER", GUARDIAN_PUSHER_NAME)
+GUARDIAN_PUSHERS = os.environ.get(
+    "GUARDIAN_PUSHERS", f"{GUARDIAN_PUSHER_NAME}:/.queues/{GUARDIAN_PUSHER_NAME}"
+)
+GUARDIAN_UI_LISTEN = os.environ.get("GUARDIAN_UI_LISTEN", ":8080")
 GUARDIAN_UI_BASE_URL = os.environ.get("GUARDIAN_UI_BASE_URL", "")
 
 
@@ -34,6 +53,14 @@ def _vars() -> dict:
         "EXTERNAL_SERVICE_TYPE": EXTERNAL_SERVICE_TYPE,
         "GUARDIAN_IMAGE": GUARDIAN_IMAGE,
         "GUARDIAN_PUSHER_IMAGE": GUARDIAN_PUSHER_IMAGE,
+        "GUARDIAN_MONOFS_ROUTER": GUARDIAN_MONOFS_ROUTER,
+        "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT": GUARDIAN_MONOFS_CLIENT_API_ENDPOINT,
+        "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES": GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES,
+        "GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES": GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES,
+        "GUARDIAN_PUSHER_NAME": GUARDIAN_PUSHER_NAME,
+        "GUARDIAN_CLUSTER": GUARDIAN_CLUSTER,
+        "GUARDIAN_PUSHERS": GUARDIAN_PUSHERS,
+        "GUARDIAN_UI_LISTEN": GUARDIAN_UI_LISTEN,
         "GUARDIAN_UI_BASE_URL": GUARDIAN_UI_BASE_URL,
         "MONOFS_TOKEN": _b64(monofs_token),
         "CLIENT_DISCOVERY_TOKEN": _b64(cdt),
@@ -64,6 +91,10 @@ def build_images(dry_run: bool) -> None:
 
 
 _DEPLOYS = ["guardiand", "guardian-pusher-k8s"]
+_CLUSTER_ROLE_BINDINGS = [
+    "guardian-cluster-admin",
+    "guardian-pusher-cluster-admin",
+]
 
 
 def deploy(dry_run: bool) -> None:
@@ -99,9 +130,65 @@ def stop(dry_run: bool) -> None:
     )
 
 
+def _clear_service_finalizers(dry_run: bool) -> None:
+    if dry_run:
+        info(f"+ kubectl -n {NAMESPACE} get service -o name")
+        info(
+            f"+ kubectl -n {NAMESPACE} patch service <name> --type=merge -p "
+            "'{\"metadata\":{\"finalizers\":[]}}'"
+        )
+        return
+
+    result = subprocess.run(
+        ["kubectl", "-n", NAMESPACE, "get", "service", "-o", "name"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return
+
+    for service in (line.strip() for line in result.stdout.splitlines()):
+        if not service:
+            continue
+        run(
+            [
+                "kubectl",
+                "-n",
+                NAMESPACE,
+                "patch",
+                service,
+                "--type=merge",
+                "-p",
+                '{"metadata":{"finalizers":[]}}',
+            ],
+            check=False,
+            dry_run=dry_run,
+        )
+
+
 def destroy(dry_run: bool) -> None:
+    _clear_service_finalizers(dry_run)
+    for name in _CLUSTER_ROLE_BINDINGS:
+        run(
+            [
+                "kubectl",
+                "delete",
+                "clusterrolebinding",
+                name,
+                "--ignore-not-found",
+            ],
+            check=False,
+            dry_run=dry_run,
+        )
     run(
-        ["kubectl", "delete", "namespace", NAMESPACE, "--ignore-not-found"],
+        [
+            "kubectl",
+            "delete",
+            "namespace",
+            NAMESPACE,
+            "--ignore-not-found",
+            "--wait=false",
+        ],
         check=False,
         dry_run=dry_run,
     )

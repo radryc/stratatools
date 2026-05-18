@@ -1,7 +1,11 @@
 """Bootstrap CLI: build|deploy|rollout|stop|destroy|stamp-urls."""
 from __future__ import annotations
 
+import base64
+import binascii
 import os
+import secrets
+import subprocess
 from pathlib import Path
 
 import typer
@@ -30,6 +34,76 @@ LOCAL_BIN_BUILD_TARGETS = [
     ("monofs-session", MONOFS_REPO_DIR, "./cmd/monofs-session"),
     ("monofs-search", MONOFS_REPO_DIR, "./cmd/monofs-search"),
 ]
+
+
+def _read_secret_key(namespace: str, secret_name: str, key: str) -> str:
+    result = subprocess.run(
+        [
+            "kubectl",
+            "-n",
+            namespace,
+            "get",
+            "secret",
+            secret_name,
+            "-o",
+            f"jsonpath={{.data.{key}}}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return ""
+    value = result.stdout.strip()
+    if not value:
+        return ""
+    try:
+        return base64.b64decode(value).decode()
+    except (binascii.Error, UnicodeDecodeError):
+        warn(
+            f"unable to decode {namespace}/{secret_name}:{key}; generating a new value"
+        )
+        return ""
+
+
+def _ensure_secret_env(
+    env_name: str,
+    namespace: str,
+    secret_name: str,
+    key: str,
+    *,
+    dry_run: bool,
+) -> None:
+    if os.environ.get(env_name, "").strip():
+        return
+
+    value = ""
+    if not dry_run:
+        value = _read_secret_key(namespace, secret_name, key)
+        if value:
+            info(f"reusing {env_name} from {namespace}/{secret_name}")
+
+    if not value:
+        value = secrets.token_urlsafe(32)
+        info(f"generated {env_name} for bootstrap")
+
+    os.environ[env_name] = value
+
+
+def _ensure_bootstrap_secrets(dry_run: bool) -> None:
+    _ensure_secret_env(
+        "MONOFS_TOKEN",
+        storage.NAMESPACE,
+        "monofs-secrets",
+        "monofs-token",
+        dry_run=dry_run,
+    )
+    _ensure_secret_env(
+        "CLIENT_DISCOVERY_TOKEN",
+        guardian.NAMESPACE,
+        "guardian-secrets",
+        "client-discovery-token",
+        dry_run=dry_run,
+    )
 
 
 def _path_contains(path: Path) -> bool:
@@ -111,6 +185,7 @@ def build(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
 def deploy(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Build local CLIs and bootstrap images, then deploy storage + Guardian."""
     _install_local_bins(dry_run)
+    _ensure_bootstrap_secrets(dry_run)
     storage.build_images(dry_run)
     guardian.build_images(dry_run)
     storage.deploy(dry_run)
@@ -122,6 +197,7 @@ def deploy(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
 def rollout(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Build local CLIs, rebuild images, and restart deployments."""
     _install_local_bins(dry_run)
+    _ensure_bootstrap_secrets(dry_run)
     storage.build_images(dry_run)
     guardian.build_images(dry_run)
     storage.rollout(dry_run)
