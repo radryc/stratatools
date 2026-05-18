@@ -12,7 +12,7 @@ spec:
     assets:
         - type: Config
           name: collector-config
-          version: 20260513-1525
+          version: 20260518-1930
           properties:
             data:
                 otel-collector.yaml: |
@@ -36,17 +36,17 @@ spec:
                                     names:
                                       - monofs
                               relabel_configs:
-                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                                - source_labels: [__meta_kubernetes_pod_label_app]
                                   action: keep
                                   regex: monofs-router
                                 - source_labels: [__meta_kubernetes_pod_ip]
                                   target_label: __address__
-                                  replacement: $1:8090
+                                  replacement: $1:8080
                                 - source_labels: [__meta_kubernetes_namespace]
                                   target_label: namespace
                                 - source_labels: [__meta_kubernetes_pod_name]
                                   target_label: pod
-                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                                - source_labels: [__meta_kubernetes_pod_label_component]
                                   target_label: node
                                 - target_label: component
                                   replacement: monofs-router
@@ -57,7 +57,7 @@ spec:
                                     names:
                                       - monofs
                               relabel_configs:
-                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                                - source_labels: [__meta_kubernetes_pod_label_app]
                                   action: keep
                                   regex: monofs-server
                                 - source_labels: [__meta_kubernetes_pod_ip]
@@ -67,7 +67,7 @@ spec:
                                   target_label: namespace
                                 - source_labels: [__meta_kubernetes_pod_name]
                                   target_label: pod
-                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                                - source_labels: [__meta_kubernetes_pod_label_component]
                                   target_label: node
                                 - target_label: component
                                   replacement: monofs-server
@@ -76,19 +76,19 @@ spec:
                                 - role: pod
                                   namespaces:
                                     names:
-                                      - guardian-configs
+                                      - guardian
                               relabel_configs:
-                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                                - source_labels: [__meta_kubernetes_pod_label_app]
                                   action: keep
                                   regex: guardiand
                                 - source_labels: [__meta_kubernetes_pod_ip]
                                   target_label: __address__
-                                  replacement: $1:8080
+                                  replacement: $1:8090
                                 - source_labels: [__meta_kubernetes_namespace]
                                   target_label: namespace
                                 - source_labels: [__meta_kubernetes_pod_name]
                                   target_label: pod
-                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                                - source_labels: [__meta_kubernetes_pod_label_component]
                                   target_label: node
                                 - target_label: component
                                   replacement: guardian
@@ -122,7 +122,7 @@ spec:
                       batch: {}
 
                     exporters:
-                      otlp_grpc/doctor:
+                      otlp/doctor:
                         endpoint: ${env:DOCTOR_OTLP_ENDPOINT}
                         compression: none
                         tls:
@@ -135,19 +135,19 @@ spec:
                         traces:
                           receivers: [otlp]
                           processors: [batch]
-                          exporters: [otlp_grpc/doctor]
+                          exporters: [otlp/doctor]
                         logs:
                           receivers: [otlp]
                           processors: [batch]
-                          exporters: [otlp_grpc/doctor]
+                          exporters: [otlp/doctor]
                         metrics:
                           receivers: [otlp, prometheus]
                           processors: [batch]
-                          exporters: [otlp_grpc/doctor]
+                          exporters: [otlp/doctor]
             format: yaml
         - type: Compute
           name: collector
-          version: 20260513-1525
+          version: 20260518-1930
           dependsOn:
             - collector-config
           payload:
@@ -163,7 +163,7 @@ spec:
             env:
                 DOCTOR_OTLP_ENDPOINT: k8s-svc-compute-k8s-main-doctor-doctor-ingest-ingest.doctor.svc.cluster.local:4317
                 DOCTOR_TENANT: default
-            image: otel/opentelemetry-collector-contrib:sha256-d57bfe8eee2378f31cb1193239fbcac521d54a5a071fca2bfc106916a32b892d
+            image: otel/opentelemetry-collector-contrib:latest
             imagePullPolicy: IfNotPresent
             ports:
                 - containerPort: 4317
@@ -183,7 +183,7 @@ spec:
                     memory: 256Mi
         - type: LoadBalancer
           name: collector-edge
-          version: 20260513-1525
+          version: 20260518-1930
           dependsOn:
             - collector
           payload:
