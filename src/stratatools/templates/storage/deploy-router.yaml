@@ -24,10 +24,15 @@ spec:
           args:
             - --port=9090
             - --http-port=8080
-            - --router-name=router-${SUFFIX}
-            - --nodes=node-a=node-a:9000,node-b=node-b:9000,node-c=node-c:9000,node-d=node-d:9000,node-e=node-e:9000
+            - --router-name=${ROUTER_NAME}
+            - --cluster-id=${MONOFS_CLUSTER_ID}
+            - --peer-routers=${ROUTER_PEER_NAME}=http://${ROUTER_PEER_NAME}:8080
+            - --nodes=${MONOFS_NODE_ADDRS}
+            - --weights=node-a=100,node-b=100,node-c=100,node-d=100,node-e=100
+            - --external-addrs=${MONOFS_EXTERNAL_ADDRS}
             - --search-addr=search-index:9100
             - --fetcher-addrs=fetcher-a:9200,fetcher-b:9200
+            - --log-level=warn
           ports:
             - containerPort: 9090
             - containerPort: 8080

@@ -57,7 +57,7 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
         ("monofs-client:dev-base", ["--target", "client"], MONOFS_REPO_DIR),
         ("dev-workspace-vscode:latest",
          ["-f", str(ROOT / "images" / "dev-workspace-vscode" / "Dockerfile")],
-         ROOT),
+         AINFRA),
     ],
 }
 
@@ -93,6 +93,40 @@ def _cluster_load_mode(ctx: str) -> bool:
     return ctx == "docker-desktop" or ctx.startswith("kind-")
 
 
+def _image_repo_name(ref: str) -> str:
+    """Extract the bare image name from a ref, stripping registry prefix and tag/digest.
+
+    Examples:
+      "localhost:5000/guardian:sha256-abc123" -> "guardian"
+      "guardian:latest"                        -> "guardian"
+      "ghcr.io/org/my-image:1.2.3"             -> "my-image"
+      "mirror.gcr.io/grafana/grafana:13.0.0"   -> "grafana/grafana"  (multi-component)
+    """
+    # strip digest
+    ref = ref.split("@")[0]
+    # strip tag
+    last_slash = ref.rfind("/")
+    name_and_tag = ref if last_slash == -1 else ref[last_slash + 1:]
+    name = name_and_tag.split(":")[0]
+    return name
+
+
+def _build_repo_mapping(mapping: dict[str, str]) -> dict[str, str]:
+    """Build a fallback mapping from bare repo name → target ref.
+
+    Used when an image field in a YAML contains an old registry+sha ref that
+    doesn't appear verbatim as a mapping key (e.g. a previously registry-stamped
+    sha256 ref that must be rewritten for cluster-load mode, or vice-versa).
+    """
+    repo_map: dict[str, str] = {}
+    for target in mapping.values():
+        repo = _image_repo_name(target)
+        # prefer the first (most specific) target for each repo name
+        if repo not in repo_map:
+            repo_map[repo] = target
+    return repo_map
+
+
 def _stamp_file(path: Path, mapping: dict[str, str], dry_run: bool) -> bool:
     try:
         data = yaml.safe_load(path.read_text())
@@ -102,14 +136,23 @@ def _stamp_file(path: Path, mapping: dict[str, str], dry_run: bool) -> bool:
     if data is None:
         return False
     changed = False
+    repo_map = _build_repo_mapping(mapping)
 
     def walk(node):
         nonlocal changed
         if isinstance(node, dict):
             for k, v in list(node.items()):
-                if k == "image" and isinstance(v, str) and v in mapping and mapping[v] != v:
-                    node[k] = mapping[v]
-                    changed = True
+                if k == "image" and isinstance(v, str):
+                    if v in mapping and mapping[v] != v:
+                        # exact key match and value differs → replace
+                        node[k] = mapping[v]
+                        changed = True
+                    elif v not in mapping:
+                        # no exact match — try repo-name based fallback
+                        repo = _image_repo_name(v)
+                        if repo in repo_map and repo_map[repo] != v:
+                            node[k] = repo_map[repo]
+                            changed = True
                 else:
                     walk(v)
         elif isinstance(node, list):

@@ -11,7 +11,7 @@ from typing import Optional
 import typer
 
 from stratatools.util import PARTITIONS, die, info, run, warn
-from stratatools.image import PARTITIONS_LIST, cmd_build, cmd_push, cmd_stamp
+from stratatools.image import cmd_build, cmd_push, cmd_stamp
 
 app = typer.Typer(
     no_args_is_help=False,
@@ -32,13 +32,24 @@ def _dedupe(items):
     return out
 
 
+def _known_release_partitions() -> list[str]:
+    parts: list[str] = []
+    for entry in sorted(PARTITIONS.iterdir(), key=lambda path: path.name):
+        if not entry.is_dir() or entry.name.startswith("_"):
+            continue
+        if (entry / "config.yaml").is_file():
+            parts.append(entry.name)
+    return parts
+
+
 def _resolve_partitions(partition, all_flag):
+    known = _known_release_partitions()
     if all_flag:
-        return list(PARTITIONS_LIST)
+        return known
     if not partition:
         die("must pass --partition or --all")
     parts = _dedupe(partition)
-    unknown = [p for p in parts if p not in PARTITIONS_LIST]
+    unknown = [p for p in parts if p not in known]
     if unknown:
         die(f"unknown partitions: {unknown}")
     return parts
@@ -77,13 +88,8 @@ def _release_one(
     if p == "k8s-top" and not skip_guardian:
         _apply_k8s_top_prereq(dry_run)
 
-    if bump and not skip_guardian:
-        _gctl(
-            ["partition", "tag", "--bump", "--partition", p, "--dir", str(pdir)],
-            dry_run,
-        )
-    elif bump and skip_guardian:
-        warn("skipping --bump because --skip-guardian was set")
+    if bump:
+        _gctl(["partition", "tag", "--dir", str(pdir)], dry_run)
 
     if not skip_build:
         cmd_build([p], dry_run=dry_run)
@@ -93,7 +99,7 @@ def _release_one(
         cmd_stamp([p], registry=registry, dry_run=dry_run)
 
     if not skip_guardian:
-        _gctl(["partition", "push", "--partition", p, "--dir", str(pdir)], dry_run)
+        _gctl(["partition", "push", "--dir", str(pdir)], dry_run)
         _gctl(["partition", "reconcile", "--partition", p], dry_run)
         if wait:
             _gctl(["partition", "wait", "--partition", p], dry_run)

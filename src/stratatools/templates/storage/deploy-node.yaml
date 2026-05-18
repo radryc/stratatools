@@ -27,11 +27,16 @@ spec:
             - --addr=:9000
             - --node-id=node-${SUFFIX}
             - --db-path=/data/db
-            - --fetcher=fetcher-a:9200
+            - --kvs-data-dir=/data/kvs
+            - --kvs-api-addr=node-${SUFFIX}:9000
+            - --kvs-raft-addr=0.0.0.0:7000
+            - --kvs-raft-advertise-addr=node-${SUFFIX}:7000
+${KVS_EXTRA_ARGS}            - --fetcher=fetcher-a:9200
             - --fetcher=fetcher-b:9200
           ports:
             - containerPort: 9000
             - containerPort: 8080
+            - containerPort: 7000
           volumeMounts:
             - name: data
               mountPath: /data
