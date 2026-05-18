@@ -22,6 +22,7 @@ REPOS: dict[str, str] = {
     "doctor":   "https://github.com/radryc/doctor.git",
     "monofs":   "https://github.com/radryc/monofs.git",
     "kvs":      "https://github.com/radryc/kvs.git",
+    "k8s-top":  "https://github.com/radryc/k8s-top.git",
     "agent":    "https://github.com/radryc/agent.git",
     "packager": "https://github.com/radryc/packager.git",
     "cfg":      "https://github.com/radryc/cfg.git",

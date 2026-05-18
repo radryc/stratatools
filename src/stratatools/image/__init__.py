@@ -21,6 +21,7 @@ GUARDIAN_REPO_DIR = Path(os.environ.get("GUARDIAN_REPO_DIR", AINFRA / "guardian"
 MONOFS_REPO_DIR = Path(os.environ.get("MONOFS_REPO_DIR", AINFRA / "monofs"))
 DOCTOR_REPO_DIR = Path(os.environ.get("DOCTOR_REPO_DIR", AINFRA / "doctor"))
 KVS_REPO_DIR = Path(os.environ.get("KVS_REPO_DIR", AINFRA / "kvs"))
+K8S_TOP_REPO_DIR = Path(os.environ.get("K8S_TOP_REPO_DIR", AINFRA / "k8s-top"))
 
 PARTITIONS_LIST: list[str] = [
     "guardian-configs", "opentelemetry", "k8s-top",
@@ -42,14 +43,14 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
     ],
     "opentelemetry": [],
     "k8s-top": [
-        ("k8s-top:latest", ["-f", str(AINFRA / "k8s-top" / "Dockerfile")], AINFRA),
+        ("k8s-top:latest", ["-f", str(K8S_TOP_REPO_DIR / "Dockerfile")], AINFRA),
     ],
     "doctor": [
         ("doctor-ingest:latest",
-         ["--target", "ingest", "--build-context", f"monofs={MONOFS_REPO_DIR}"],
+         ["--build-arg", "DOCTOR_SERVICE=doctor-ingest", "--build-context", f"monofs={MONOFS_REPO_DIR}"],
          DOCTOR_REPO_DIR),
         ("doctor-query:latest",
-         ["--target", "query", "--build-context", f"monofs={MONOFS_REPO_DIR}"],
+         ["--build-arg", "DOCTOR_SERVICE=doctor-query", "--build-context", f"monofs={MONOFS_REPO_DIR}"],
          DOCTOR_REPO_DIR),
     ],
     "monitoring": [],
