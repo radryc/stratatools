@@ -57,7 +57,7 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
         ("monofs-client:dev-base", ["--target", "client"], MONOFS_REPO_DIR),
         ("dev-workspace-vscode:latest",
          ["-f", str(ROOT / "images" / "dev-workspace-vscode" / "Dockerfile")],
-         ROOT),
+         AINFRA),
     ],
 }
 

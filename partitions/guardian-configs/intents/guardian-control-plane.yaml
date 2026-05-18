@@ -18,8 +18,8 @@ spec:
         image: localhost:5000/guardian:sha256-046df55a4a9d29d01c923baa2e29ecbcdd1be22ff6bee3797d7469be53f67af8
         imagePullPolicy: IfNotPresent
         env:
-          GUARDIAN_MONOFS_ROUTER: monofs-external.storage-k8s.svc.cluster.local:9090
-          GUARDIAN_MONOFS_CLIENT_API_ENDPOINT: monofs-external.storage-k8s.svc.cluster.local:9090
+          GUARDIAN_MONOFS_ROUTER: monofs-external.monofs.svc.cluster.local:9090
+          GUARDIAN_MONOFS_CLIENT_API_ENDPOINT: monofs-external.monofs.svc.cluster.local:9090
           GUARDIAN_MONOFS_TOKEN: guardian-dev-token
           GUARDIAN_MONOFS_PRINCIPAL: guardiand
           GUARDIAN_MONOFS_MOUNT_PATH: /
@@ -73,7 +73,7 @@ spec:
         env:
           GUARDIAN_PUSHER_NAME: k8s-main
           GUARDIAN_CLUSTER: k8s-main
-          GUARDIAN_MONOFS_ROUTER: monofs-external.storage-k8s.svc.cluster.local:9090
+          GUARDIAN_MONOFS_ROUTER: monofs-external.monofs.svc.cluster.local:9090
           GUARDIAN_MONOFS_TOKEN: guardian-dev-token
           GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES: "false"
           GUARDIAN_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317

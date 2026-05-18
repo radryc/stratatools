@@ -44,8 +44,8 @@ spec:
                 GITFS_OVERLAY_DIR: /home/monofs/.monofs/overlay
                 KUBE_NAMESPACE: dev-workspace
                 MONOFS_MOUNT: /mnt/monofs
-                MONOFS_ROUTER: monofs-external.storage-k8s.svc.cluster.local:9090
-                ROUTER_ADDR: monofs-external.storage-k8s.svc.cluster.local:9090
+                MONOFS_ROUTER: monofs-external.monofs.svc.cluster.local:9090
+                ROUTER_ADDR: monofs-external.monofs.svc.cluster.local:9090
                 VSCODE_CONNECTION_TOKEN: dev-workspace-token-change-me
                 VSCODE_DEFAULT_FOLDER: /workspace
                 VSCODE_PORT: "8888"

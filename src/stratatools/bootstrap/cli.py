@@ -201,7 +201,7 @@ def rollout(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     storage.build_images(dry_run)
     guardian.build_images(dry_run)
     storage.rollout(dry_run)
-    guardian.deploy(dry_run)
+    guardian.rollout(dry_run)
 
 
 @app.command()

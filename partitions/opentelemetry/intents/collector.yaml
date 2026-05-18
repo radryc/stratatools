@@ -34,14 +34,14 @@ spec:
                                 - role: pod
                                   namespaces:
                                     names:
-                                      - storage-k8s
+                                      - monofs
                               relabel_configs:
                                 - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
                                   action: keep
                                   regex: monofs-router
                                 - source_labels: [__meta_kubernetes_pod_ip]
                                   target_label: __address__
-                                  replacement: $1:8080
+                                  replacement: $1:8090
                                 - source_labels: [__meta_kubernetes_namespace]
                                   target_label: namespace
                                 - source_labels: [__meta_kubernetes_pod_name]
@@ -55,7 +55,7 @@ spec:
                                 - role: pod
                                   namespaces:
                                     names:
-                                      - storage-k8s
+                                      - monofs
                               relabel_configs:
                                 - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
                                   action: keep
@@ -83,7 +83,7 @@ spec:
                                   regex: guardiand
                                 - source_labels: [__meta_kubernetes_pod_ip]
                                   target_label: __address__
-                                  replacement: $1:8090
+                                  replacement: $1:8080
                                 - source_labels: [__meta_kubernetes_namespace]
                                   target_label: namespace
                                 - source_labels: [__meta_kubernetes_pod_name]

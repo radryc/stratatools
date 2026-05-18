@@ -65,8 +65,12 @@ def _default_external_addr_csv() -> str:
     return ",".join(f"{name}={_default_external_addr(name)}" for name in NODE_NAMES)
 
 
+def _internal_node_addr(name: str) -> str:
+    return f"{name}.{NAMESPACE}.svc.cluster.local:9000"
+
+
 def _internal_node_addr_csv() -> str:
-    return ",".join(f"{name}={name}:9000" for name in NODE_NAMES)
+    return ",".join(f"{name}={_internal_node_addr(name)}" for name in NODE_NAMES)
 
 
 def _router_name(suffix: str) -> str:
@@ -179,13 +183,24 @@ def _first_node_address() -> str:
     )
 
 
+def _host_reachable_node_address() -> str:
+    host = _first_node_address()
+    if _is_docker_internal_ip(host):
+        return "127.0.0.1"
+    return host
+
+
 def _service_external_endpoint(service_name: str, service_port: str) -> str:
     service_type = _service_type(service_name)
     if service_type == "LoadBalancer":
         host = _service_lb_host(service_name)
-        return f"{host}:{service_port}" if host else ""
+        if host:
+            return f"{host}:{service_port}"
+        host = _host_reachable_node_address()
+        node_port = _service_node_port(service_name)
+        return f"{host}:{node_port}" if host and node_port else ""
     if service_type == "NodePort":
-        host = _first_node_address()
+        host = _host_reachable_node_address()
         node_port = _service_node_port(service_name)
         return f"{host}:{node_port}" if host and node_port else ""
     return ""

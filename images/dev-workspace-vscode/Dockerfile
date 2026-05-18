@@ -74,7 +74,7 @@ RUN useradd --create-home --shell /bin/bash monofs && \
 
 COPY --from=monofs-vscode-extension /tmp/radryc.monofs.vsix /tmp/radryc.monofs.vsix
 
-COPY scripts/images/dev-workspace-vscode/entrypoint.sh /usr/local/bin/dev-workspace-entrypoint.sh
+COPY stratatools/images/dev-workspace-vscode/entrypoint.sh /usr/local/bin/dev-workspace-entrypoint.sh
 
 RUN HOME=/home/monofs OPENVSCODE_SERVER_ROOT=/home/.openvscode-server \
         openvscode-server --extensions-dir /home/monofs/.openvscode-server/extensions --install-extension /tmp/radryc.monofs.vsix && \
