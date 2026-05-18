@@ -26,6 +26,11 @@ MONOFS_ROUTER_IMAGE = os.environ.get("MONOFS_ROUTER_IMAGE", "monofs-router:lates
 MONOFS_FETCHER_IMAGE = os.environ.get("MONOFS_FETCHER_IMAGE", "monofs-fetcher:latest")
 MONOFS_SEARCH_IMAGE = os.environ.get("MONOFS_SEARCH_IMAGE", "monofs-search:latest")
 MINIO_IMAGE = os.environ.get("MINIO_IMAGE", "mirror.gcr.io/minio/minio:latest")
+MONOFS_IMAGE_PULL_POLICY = os.environ.get("MONOFS_IMAGE_PULL_POLICY", "IfNotPresent")
+MONOFS_OTEL_ENDPOINT = os.environ.get("MONOFS_OTEL_ENDPOINT", "")
+MONOFS_OTEL_INSECURE = os.environ.get("MONOFS_OTEL_INSECURE", "true")
+MONOFS_OTEL_SERVICE_NAME = os.environ.get("MONOFS_OTEL_SERVICE_NAME", "monofs-server")
+MONOFS_OTEL_METRIC_INTERVAL = os.environ.get("MONOFS_OTEL_METRIC_INTERVAL", "30s")
 MONOFS_REPO_DIR = Path(os.environ.get("MONOFS_REPO_DIR", str(ROOT.parent / "monofs")))
 NODE_NAMES = ("node-a", "node-b", "node-c", "node-d", "node-e")
 ROUTER_SUFFIXES = ("a", "b")
@@ -346,6 +351,11 @@ def _vars() -> dict:
         "MONOFS_FETCHER_IMAGE": MONOFS_FETCHER_IMAGE,
         "MONOFS_SEARCH_IMAGE": MONOFS_SEARCH_IMAGE,
         "MINIO_IMAGE": MINIO_IMAGE,
+        "MONOFS_IMAGE_PULL_POLICY": MONOFS_IMAGE_PULL_POLICY,
+        "MONOFS_OTEL_ENDPOINT": MONOFS_OTEL_ENDPOINT,
+        "MONOFS_OTEL_INSECURE": MONOFS_OTEL_INSECURE,
+        "MONOFS_OTEL_SERVICE_NAME": MONOFS_OTEL_SERVICE_NAME,
+        "MONOFS_OTEL_METRIC_INTERVAL": MONOFS_OTEL_METRIC_INTERVAL,
         "MONOFS_TOKEN": _b64(monofs_token),
         "MONOFS_ENCRYPTION_KEY": _b64(monofs_encryption_key),
         "MINIO_ACCESS_KEY": _b64(minio_ak),
