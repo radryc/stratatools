@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guardiand
+  namespace: ${NAMESPACE}
+  labels:
+    app: guardiand
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guardiand
+  template:
+    metadata:
+      labels:
+        app: guardiand
+    spec:
+      serviceAccountName: guardian
+      containers:
+        - name: guardiand
+          image: ${GUARDIAN_IMAGE}
+          env:
+            - name: GUARDIAN_UI_BASE_URL
+              value: "${GUARDIAN_UI_BASE_URL}"
+            - name: MONOFS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: guardian-secrets
+                  key: monofs-token
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: secrets
+              mountPath: /etc/guardian/secrets
+              readOnly: true
+      volumes:
+        - name: secrets
+          secret:
+            secretName: guardian-secrets

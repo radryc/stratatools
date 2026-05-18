@@ -1,0 +1,59 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+    name: __PARTITION__
+spec:
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: __PARTITION__
+    locked: false
+    assets:
+        - type: Volume
+          name: __PARTITION__-data
+          version: __VERSION__
+          properties:
+            accessMode: ReadWriteOnce
+            size: 1Gi
+        - type: Compute
+          name: __PARTITION__
+          version: __VERSION__
+          dependsOn:
+            - __PARTITION__-data
+          payload:
+            k8s: /partitions/__PARTITION__/payloads/__PARTITION__.k8s.yaml
+          properties:
+            env: {}
+            image: REPLACE_ME
+            imagePullPolicy: IfNotPresent
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+            ports:
+                - containerPort: 8080
+                  name: http
+                  protocol: TCP
+                  servicePort: 8080
+            volumeMounts:
+                - path: /var/lib/__PARTITION__
+                  volume: __PARTITION__-data
+        - type: LoadBalancer
+          name: __PARTITION__-edge
+          version: __VERSION__
+          dependsOn:
+            - __PARTITION__
+          payload:
+            k8s: /partitions/__PARTITION__/payloads/edge.k8s.yaml
+          properties:
+            listeners:
+                - name: http
+                  port: 8080
+                  protocol: TCP
+            serviceType: LoadBalancer
+            targets:
+                - __PARTITION__

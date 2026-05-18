@@ -1,0 +1,89 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+  name: guardian-control-plane
+spec:
+  intentType: standard
+  joins: []
+  targetPusher: k8s-main
+  target:
+    cluster: k8s-main
+    namespace: guardian-configs
+  locked: false
+  assets:
+    - type: Compute
+      name: guardian-control-plane
+      version: 20260511-1200
+      properties:
+        image: localhost:5000/guardian:sha256-046df55a4a9d29d01c923baa2e29ecbcdd1be22ff6bee3797d7469be53f67af8
+        imagePullPolicy: IfNotPresent
+        env:
+          GUARDIAN_MONOFS_ROUTER: monofs-external.storage-k8s.svc.cluster.local:9090
+          GUARDIAN_MONOFS_CLIENT_API_ENDPOINT: monofs-external.storage-k8s.svc.cluster.local:9090
+          GUARDIAN_MONOFS_TOKEN: guardian-dev-token
+          GUARDIAN_MONOFS_PRINCIPAL: guardiand
+          GUARDIAN_MONOFS_MOUNT_PATH: /
+          GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES: "false"
+          GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES: "true"
+          GUARDIAN_CLIENT_DISCOVERY_TOKEN: guardian-dev-token
+          GUARDIAN_PRINCIPAL_ID: guardiand
+          GUARDIAN_UI_LISTEN: :8090
+          GUARDIAN_UI_BASE_URL: http://127.0.0.1:8090
+          GUARDIAN_RECONCILE_INTERVAL: 5m
+          GUARDIAN_DEBOUNCE_MS: "250"
+          GUARDIAN_PUSHERS: k8s-main:/.queues/k8s-main
+          GUARDIAN_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
+          GUARDIAN_OTEL_INSECURE: "true"
+          GUARDIAN_OTEL_SERVICE_NAME: guardian
+          GUARDIAN_OTEL_METRIC_INTERVAL: 15s
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        ports:
+          - name: http
+            containerPort: 8090
+            servicePort: 8090
+            protocol: TCP
+
+    - type: LoadBalancer
+      name: guardian-ui
+      version: 20260511-1200
+      dependsOn:
+        - guardian-control-plane
+      properties:
+        targets:
+          - guardian-control-plane
+        listeners:
+          - name: http
+            port: 8090
+            protocol: TCP
+
+    - type: Compute
+      name: guardian-kubernetes-pusher
+      version: 20260511-1200
+      dependsOn:
+        - guardian-control-plane
+      properties:
+        image: localhost:5000/guardian-pusher-k8s:sha256-fe6e8923f270b57dc713c063aa7d9049b0be8fba03d72d66b53bf3b2c7d3edde
+        imagePullPolicy: IfNotPresent
+        env:
+          GUARDIAN_PUSHER_NAME: k8s-main
+          GUARDIAN_CLUSTER: k8s-main
+          GUARDIAN_MONOFS_ROUTER: monofs-external.storage-k8s.svc.cluster.local:9090
+          GUARDIAN_MONOFS_TOKEN: guardian-dev-token
+          GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES: "false"
+          GUARDIAN_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
+          GUARDIAN_OTEL_INSECURE: "true"
+          GUARDIAN_OTEL_SERVICE_NAME: guardian-pusher-k8s
+          GUARDIAN_OTEL_METRIC_INTERVAL: 15s
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi

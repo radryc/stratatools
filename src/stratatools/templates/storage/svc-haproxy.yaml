@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: monofs-external
+  namespace: ${NAMESPACE}
+spec:
+  type: ${EXTERNAL_SERVICE_TYPE}
+  selector:
+    app: monofs-haproxy
+  ports:
+    - name: grpc
+      port: 9090
+      targetPort: 9090
+    - name: http
+      port: 8080
+      targetPort: 8080

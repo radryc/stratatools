@@ -1,0 +1,14 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+  name: lifecycle
+spec:
+  intentType: standard
+  joins:
+    - query
+  targetPusher: k8s-main
+  target:
+    cluster: k8s-main
+    namespace: doctor
+  locked: false
+  assets: []

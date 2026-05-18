@@ -1,0 +1,16 @@
+apiVersion: guardian/v1alpha1
+kind: Partition
+metadata:
+  name: opentelemetry
+  labels:
+    role: observability
+spec:
+  deletionPolicy: orphan
+  reconciliation:
+    mode: auto
+    interval: 1m
+  labels:
+    stack: k8s
+    component: opentelemetry
+    topology: kubernetes
+    managedBy: guardian

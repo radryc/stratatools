@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guardian-pusher-k8s
+  namespace: ${NAMESPACE}
+  labels:
+    app: guardian-pusher-k8s
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guardian-pusher-k8s
+  template:
+    metadata:
+      labels:
+        app: guardian-pusher-k8s
+    spec:
+      serviceAccountName: guardian
+      containers:
+        - name: pusher
+          image: ${GUARDIAN_PUSHER_IMAGE}

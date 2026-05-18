@@ -1,0 +1,16 @@
+apiVersion: guardian/v1alpha1
+kind: Partition
+metadata:
+  name: __PARTITION__
+  labels:
+    role: __PARTITION__
+spec:
+  deletionPolicy: orphan
+  reconciliation:
+    mode: auto
+    interval: 1m
+  labels:
+    stack: k8s
+    component: __PARTITION__
+    topology: kubernetes
+    managedBy: guardian

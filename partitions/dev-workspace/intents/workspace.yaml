@@ -1,0 +1,92 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+    name: workspace
+spec:
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: dev-workspace
+    locked: false
+    assets:
+        - type: Volume
+          name: workspace-data
+          version: 20260515-1525
+          properties:
+            accessMode: ReadWriteOnce
+            size: 20Gi
+        - type: Volume
+          name: monofs-state
+          version: 20260515-1525
+          properties:
+            accessMode: ReadWriteOnce
+            size: 10Gi
+        - type: Volume
+          name: monofs-cache
+          version: 20260515-1525
+          properties:
+            accessMode: ReadWriteOnce
+            size: 10Gi
+        - type: Compute
+          name: vscode
+          version: 20260515-1525
+          dependsOn:
+            - workspace-data
+            - monofs-state
+            - monofs-cache
+          payload:
+            k8s: /partitions/dev-workspace/payloads/workspace.k8s.yaml
+          properties:
+            capabilities:
+                - SYS_ADMIN
+            env:
+                GITFS_OVERLAY_DIR: /home/monofs/.monofs/overlay
+                KUBE_NAMESPACE: dev-workspace
+                MONOFS_MOUNT: /mnt/monofs
+                MONOFS_ROUTER: monofs-external.storage-k8s.svc.cluster.local:9090
+                ROUTER_ADDR: monofs-external.storage-k8s.svc.cluster.local:9090
+                VSCODE_CONNECTION_TOKEN: dev-workspace-token-change-me
+                VSCODE_DEFAULT_FOLDER: /workspace
+                VSCODE_PORT: "8888"
+                WORKSPACE_ROOT: /workspace
+            hostBindMounts:
+                - source: /dev/fuse
+                  target: /dev/fuse
+            image: dev-workspace-vscode:sha256-242e02150eb62d382d54aca7db732be6780dcd062e6127104ffcf5e794cafd1c
+            imagePullPolicy: IfNotPresent
+            ports:
+                - containerPort: 8888
+                  name: http
+                  protocol: TCP
+                  servicePort: 8888
+            privileged: true
+            resources:
+                limits:
+                    cpu: "2"
+                    memory: 4Gi
+                requests:
+                    cpu: 500m
+                    memory: 1Gi
+            volumeMounts:
+                - path: /workspace
+                  volume: workspace-data
+                - path: /home/monofs/.monofs
+                  volume: monofs-state
+                - path: /var/cache/monofs
+                  volume: monofs-cache
+        - type: LoadBalancer
+          name: vscode-edge
+          version: 20260515-1525
+          dependsOn:
+            - vscode
+          payload:
+            k8s: /partitions/dev-workspace/payloads/edge.k8s.yaml
+          properties:
+            listeners:
+                - name: http
+                  port: 8888
+                  protocol: TCP
+            serviceType: LoadBalancer
+            targets:
+                - vscode

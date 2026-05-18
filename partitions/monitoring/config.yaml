@@ -1,0 +1,17 @@
+apiVersion: guardian/v1alpha1
+kind: Partition
+metadata:
+  name: monitoring
+  labels:
+    role: observability
+spec:
+  deletionPolicy: orphan
+  reconciliation:
+    mode: auto
+    interval: 1m
+  labels:
+    stack: k8s
+    component: monitoring
+    topology: kubernetes
+    managedBy: guardian
+    endpoint: http://k8s-svc-lb-k8s-main-monitoring-monitoring-grafana-grafana-edge.monitoring.svc.cluster.local:3000

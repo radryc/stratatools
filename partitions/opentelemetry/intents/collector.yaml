@@ -1,0 +1,201 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+    name: collector
+spec:
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: otel
+    locked: false
+    assets:
+        - type: Config
+          name: collector-config
+          version: 20260513-1525
+          properties:
+            data:
+                otel-collector.yaml: |
+                    receivers:
+                      otlp:
+                        protocols:
+                          grpc:
+                            endpoint: 0.0.0.0:4317
+                            max_recv_msg_size_mib: 32
+                          http:
+                            endpoint: 0.0.0.0:4318
+                      prometheus:
+                        config:
+                          global:
+                            scrape_interval: 1m
+                          scrape_configs:
+                            - job_name: monofs-router
+                              kubernetes_sd_configs:
+                                - role: pod
+                                  namespaces:
+                                    names:
+                                      - storage-k8s
+                              relabel_configs:
+                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                                  action: keep
+                                  regex: monofs-router
+                                - source_labels: [__meta_kubernetes_pod_ip]
+                                  target_label: __address__
+                                  replacement: $1:8080
+                                - source_labels: [__meta_kubernetes_namespace]
+                                  target_label: namespace
+                                - source_labels: [__meta_kubernetes_pod_name]
+                                  target_label: pod
+                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                                  target_label: node
+                                - target_label: component
+                                  replacement: monofs-router
+                            - job_name: monofs-server
+                              kubernetes_sd_configs:
+                                - role: pod
+                                  namespaces:
+                                    names:
+                                      - storage-k8s
+                              relabel_configs:
+                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                                  action: keep
+                                  regex: monofs-server
+                                - source_labels: [__meta_kubernetes_pod_ip]
+                                  target_label: __address__
+                                  replacement: $1:9100
+                                - source_labels: [__meta_kubernetes_namespace]
+                                  target_label: namespace
+                                - source_labels: [__meta_kubernetes_pod_name]
+                                  target_label: pod
+                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                                  target_label: node
+                                - target_label: component
+                                  replacement: monofs-server
+                            - job_name: guardiand
+                              kubernetes_sd_configs:
+                                - role: pod
+                                  namespaces:
+                                    names:
+                                      - guardian-configs
+                              relabel_configs:
+                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                                  action: keep
+                                  regex: guardiand
+                                - source_labels: [__meta_kubernetes_pod_ip]
+                                  target_label: __address__
+                                  replacement: $1:8090
+                                - source_labels: [__meta_kubernetes_namespace]
+                                  target_label: namespace
+                                - source_labels: [__meta_kubernetes_pod_name]
+                                  target_label: pod
+                                - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+                                  target_label: node
+                                - target_label: component
+                                  replacement: guardian
+                            - job_name: kubernetes-pods-annotated
+                              kubernetes_sd_configs:
+                                - role: pod
+                              relabel_configs:
+                                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                                  action: keep
+                                  regex: "true"
+                                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+                                  action: keep
+                                  regex: \d+
+                                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                                  action: replace
+                                  target_label: __metrics_path__
+                                  regex: (.+)
+                                - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                                  action: replace
+                                  regex: (.+);(.+)
+                                  replacement: $1:$2
+                                  target_label: __address__
+                                - source_labels: [__meta_kubernetes_namespace]
+                                  target_label: namespace
+                                - source_labels: [__meta_kubernetes_pod_name]
+                                  target_label: pod
+                                - source_labels: [__meta_kubernetes_pod_node_name]
+                                  target_label: k8s_node
+
+                    processors:
+                      batch: {}
+
+                    exporters:
+                      otlp_grpc/doctor:
+                        endpoint: ${env:DOCTOR_OTLP_ENDPOINT}
+                        compression: none
+                        tls:
+                          insecure: true
+                        headers:
+                          x-doctor-tenant: ${env:DOCTOR_TENANT}
+
+                    service:
+                      pipelines:
+                        traces:
+                          receivers: [otlp]
+                          processors: [batch]
+                          exporters: [otlp_grpc/doctor]
+                        logs:
+                          receivers: [otlp]
+                          processors: [batch]
+                          exporters: [otlp_grpc/doctor]
+                        metrics:
+                          receivers: [otlp, prometheus]
+                          processors: [batch]
+                          exporters: [otlp_grpc/doctor]
+            format: yaml
+        - type: Compute
+          name: collector
+          version: 20260513-1525
+          dependsOn:
+            - collector-config
+          payload:
+            k8s: /partitions/opentelemetry/payloads/collector.k8s.yaml
+          properties:
+            args:
+                - --config=/etc/otelcol/otel-collector.yaml
+            command:
+                - /otelcol-contrib
+            configMounts:
+                - config: collector-config
+                  path: /etc/otelcol/otel-collector.yaml
+            env:
+                DOCTOR_OTLP_ENDPOINT: k8s-svc-compute-k8s-main-doctor-doctor-ingest-ingest.doctor.svc.cluster.local:4317
+                DOCTOR_TENANT: default
+            image: otel/opentelemetry-collector-contrib:sha256-d57bfe8eee2378f31cb1193239fbcac521d54a5a071fca2bfc106916a32b892d
+            imagePullPolicy: IfNotPresent
+            ports:
+                - containerPort: 4317
+                  name: otlp-grpc
+                  protocol: TCP
+                  servicePort: 4317
+                - containerPort: 4318
+                  name: otlp-http
+                  protocol: TCP
+                  servicePort: 4318
+            resources:
+                limits:
+                    cpu: "1"
+                    memory: 512Mi
+                requests:
+                    cpu: 200m
+                    memory: 256Mi
+        - type: LoadBalancer
+          name: collector-edge
+          version: 20260513-1525
+          dependsOn:
+            - collector
+          payload:
+            k8s: /partitions/opentelemetry/payloads/edge.k8s.yaml
+          properties:
+            listeners:
+                - name: otlp-grpc
+                  port: 4317
+                  protocol: TCP
+                - name: otlp-http
+                  port: 4318
+                  protocol: TCP
+            serviceType: LoadBalancer
+            targets:
+                - collector

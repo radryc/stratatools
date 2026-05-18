@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fetcher-${SUFFIX}
+  namespace: ${NAMESPACE}
+  labels:
+    app: monofs-fetcher
+    component: fetcher-${SUFFIX}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monofs-fetcher
+      component: fetcher-${SUFFIX}
+  template:
+    metadata:
+      labels:
+        app: monofs-fetcher
+        component: fetcher-${SUFFIX}
+    spec:
+      containers:
+        - name: fetcher
+          image: ${MONOFS_FETCHER_IMAGE}
+          args:
+            - --port=9200
+            - --cache-dir=/data/cache
+            - --config=/etc/monofs/fetcher-s3.json
+          ports:
+            - containerPort: 9200
+          volumeMounts:
+            - name: cache
+              mountPath: /data/cache
+            - name: config
+              mountPath: /etc/monofs/fetcher-s3.json
+              subPath: fetcher-s3.json
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: fetcher-${SUFFIX}-cache
+        - name: config
+          configMap:
+            name: fetcher-s3-config

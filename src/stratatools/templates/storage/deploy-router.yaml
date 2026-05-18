@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: router-${SUFFIX}
+  namespace: ${NAMESPACE}
+  labels:
+    app: monofs-router
+    component: router-${SUFFIX}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monofs-router
+      component: router-${SUFFIX}
+  template:
+    metadata:
+      labels:
+        app: monofs-router
+        component: router-${SUFFIX}
+    spec:
+      containers:
+        - name: router
+          image: ${MONOFS_ROUTER_IMAGE}
+          args:
+            - --port=9090
+            - --http-port=8080
+            - --router-name=router-${SUFFIX}
+            - --nodes=node-a=node-a:9000,node-b=node-b:9000,node-c=node-c:9000,node-d=node-d:9000,node-e=node-e:9000
+            - --search-addr=search-index:9100
+            - --fetcher-addrs=fetcher-a:9200,fetcher-b:9200
+          ports:
+            - containerPort: 9090
+            - containerPort: 8080

@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monofs-haproxy
+  namespace: ${NAMESPACE}
+  labels:
+    app: monofs-haproxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monofs-haproxy
+  template:
+    metadata:
+      labels:
+        app: monofs-haproxy
+    spec:
+      containers:
+        - name: haproxy
+          image: mirror.gcr.io/library/haproxy:2.9
+          ports:
+            - containerPort: 9090
+            - containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/etc/haproxy/haproxy.cfg
+              subPath: haproxy.cfg
+      volumes:
+        - name: config
+          configMap:
+            name: monofs-haproxy

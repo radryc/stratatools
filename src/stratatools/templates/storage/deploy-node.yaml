@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-${SUFFIX}
+  namespace: ${NAMESPACE}
+  labels:
+    app: monofs-server
+    component: node-${SUFFIX}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: monofs-server
+      component: node-${SUFFIX}
+  template:
+    metadata:
+      labels:
+        app: monofs-server
+        component: node-${SUFFIX}
+    spec:
+      containers:
+        - name: node
+          image: ${MONOFS_SERVER_IMAGE}
+          args:
+            - --addr=:9000
+            - --node-id=node-${SUFFIX}
+            - --db-path=/data/db
+            - --fetcher=fetcher-a:9200
+            - --fetcher=fetcher-b:9200
+          ports:
+            - containerPort: 9000
+            - containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: node-${SUFFIX}-data

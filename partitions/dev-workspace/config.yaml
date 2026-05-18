@@ -1,0 +1,17 @@
+apiVersion: guardian/v1alpha1
+kind: Partition
+metadata:
+  name: dev-workspace
+  labels:
+    role: development
+spec:
+  deletionPolicy: orphan
+  reconciliation:
+    mode: auto
+    interval: 1m
+  labels:
+    stack: k8s
+    component: dev-workspace
+    topology: kubernetes
+    managedBy: guardian
+    endpoint: http://k8s-svc-lb-k8s-main-dev-workspace-workspace-vscode-edge.dev-workspace.svc.cluster.local:8888

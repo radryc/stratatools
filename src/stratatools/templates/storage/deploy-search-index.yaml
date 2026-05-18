@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-index
+  namespace: ${NAMESPACE}
+  labels:
+    app: monofs-search
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monofs-search
+  template:
+    metadata:
+      labels:
+        app: monofs-search
+    spec:
+      containers:
+        - name: search
+          image: ${MONOFS_SEARCH_IMAGE}
+          args:
+            - --port=9100
+            - --index-dir=/data/indexes
+          ports:
+            - containerPort: 9100
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: search-index-data

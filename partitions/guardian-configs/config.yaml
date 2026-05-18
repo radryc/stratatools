@@ -1,0 +1,17 @@
+apiVersion: guardian/v1alpha1
+kind: Partition
+metadata:
+  name: guardian-configs
+  labels:
+    role: control-plane
+spec:
+  deletionPolicy: orphan
+  reconciliation:
+    mode: auto
+    interval: 1m
+  labels:
+    stack: k8s
+    component: guardian
+    topology: kubernetes
+    managedBy: guardian
+    endpoint: http://127.0.0.1:8090

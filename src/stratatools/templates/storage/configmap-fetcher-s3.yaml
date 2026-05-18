@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fetcher-s3-config
+  namespace: ${NAMESPACE}
+data:
+  fetcher-s3.json: |
+    {
+      "endpoint": "http://minio:9000",
+      "bucket": "monofs",
+      "region": "us-east-1",
+      "access_key": "${MINIO_ACCESS_KEY}",
+      "secret_key": "${MINIO_SECRET_KEY}",
+      "use_path_style": true
+    }
