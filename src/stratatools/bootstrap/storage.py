@@ -81,11 +81,25 @@ def _router_peer_name(suffix: str) -> str:
     return _router_name("b" if suffix == "a" else "a")
 
 
+def _kvs_extra_args(suffix: str) -> str:
+    """Build KVS bootstrap/peer args for a node, indented for YAML args list."""
+    node_name = _node_name(suffix)
+    lines: list[str] = []
+    all_nodes = NODE_NAMES  # ("node-a", ..., "node-e")
+    if node_name == "node-a":
+        lines.append("            - --kvs-bootstrap")
+    for peer in all_nodes:
+        if peer != node_name:
+            lines.append(f"            - --kvs-peer={peer},{peer}:9000,{peer}:7000")
+    return "\n".join(lines) + "\n" if lines else ""
+
+
 def _node_vars(suffix: str) -> dict[str, str]:
     return {
         "SUFFIX": suffix,
         "NODE_NAME": _node_name(suffix),
         "NODE_EXTERNAL_PORT": _node_external_port(suffix),
+        "KVS_EXTRA_ARGS": _kvs_extra_args(suffix),
     }
 
 
