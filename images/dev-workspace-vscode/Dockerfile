@@ -39,6 +39,7 @@ RUN apt-get update && \
             make \
             nodejs \
             npm \
+            openssh-server \
             python3 \
             python3-pip \
             ripgrep \
@@ -67,10 +68,20 @@ RUN useradd --create-home --shell /bin/bash monofs && \
         install -d -m 0755 /etc/sudoers.d && \
         printf 'monofs ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/monofs && \
         chmod 0440 /etc/sudoers.d/monofs && \
-    mkdir -p /workspace /mnt/monofs /var/cache/monofs /home/monofs/.monofs/overlay /home/monofs/.kube /home/monofs/.openvscode-server/extensions && \
+    mkdir -p /workspace /mnt/monofs /var/cache/monofs /home/monofs/.monofs/overlay /home/monofs/.kube /home/monofs/.openvscode-server/extensions /home/monofs/.ssh && \
         chown -R monofs:monofs /workspace /mnt/monofs /var/cache/monofs /home/monofs /home/.openvscode-server && \
+        chmod 0700 /home/monofs/.ssh && \
         echo 'user_allow_other' >> /etc/fuse.conf && \
-        ln -sf /home/.openvscode-server/bin/openvscode-server /usr/local/bin/openvscode-server
+        ln -sf /home/.openvscode-server/bin/openvscode-server /usr/local/bin/openvscode-server && \
+        printf '%s\n' \
+            'PasswordAuthentication no' \
+            'KbdInteractiveAuthentication no' \
+            'ChallengeResponseAuthentication no' \
+            'PermitRootLogin no' \
+            'PubkeyAuthentication yes' \
+            'AuthorizedKeysFile /home/monofs/.ssh/authorized_keys' \
+            'AllowUsers monofs' \
+            > /etc/ssh/sshd_config.d/dev-workspace.conf
 
 COPY --from=monofs-vscode-extension /tmp/radryc.monofs.vsix /tmp/radryc.monofs.vsix
 
@@ -118,6 +129,7 @@ LABEL org.opencontainers.image.title="dev-workspace-vscode" \
       org.opencontainers.image.revision="${BUILD_COMMIT}" \
       org.opencontainers.image.created="${BUILD_TIME}"
 
+EXPOSE 22
 EXPOSE 3000
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/dev-workspace-entrypoint.sh"]

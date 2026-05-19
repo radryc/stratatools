@@ -18,6 +18,7 @@ dependencies = [
 [project.scripts]
 stratatools = "stratatools.cli:app"
 st-bootstrap = "stratatools.bootstrap:app"
+st-dogfood = "stratatools.dogfood:app"
 st-release = "stratatools.release:app"
 st-image = "stratatools.image:app"
 st-setup = "stratatools.setup:app"

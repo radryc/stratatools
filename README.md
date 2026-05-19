@@ -53,8 +53,17 @@ uv run st-setup
 uv run st-bootstrap deploy
 
 # build, distribute, stamp, and reconcile every managed partition
-uv run st-release --all --wait
+uv run st-release --all
 ```
+
+After the `dev-workspace` partition is released locally, these loopback entry
+points are intended to be available:
+
+- OpenVSCode: `http://localhost:8888/`
+- SSH into the dev workspace: `ssh monofs@localhost -p 2222`
+
+SSH access also requires a public key to be configured in the
+`ssh-authorized-keys` config for the `dev-workspace` partition.
 
 If the external Guardian or Doctor endpoint changes, refresh the stamped
 partition config:

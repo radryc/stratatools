@@ -11,7 +11,7 @@ from typing import Optional
 import typer
 
 from stratatools.util import PARTITIONS, die, info, run, warn
-from stratatools.image import cmd_build, cmd_push, cmd_stamp
+from stratatools.image import cmd_build, cmd_push, cmd_stamp, is_immutable_image_ref, planned_stamp_changes
 
 app = typer.Typer(
     no_args_is_help=False,
@@ -94,6 +94,21 @@ def _release_one(
 
     if not skip_build:
         cmd_build([p], dry_run=dry_run)
+    if not bump and not dry_run and not skip_stamp:
+        changes = planned_stamp_changes([p], registry=registry, dry_run=False).get(p, [])
+        immutable_changes: list[tuple[str, str, str]] = []
+        for path, file_changes in changes:
+            for before, after in file_changes:
+                if is_immutable_image_ref(before):
+                    immutable_changes.append((str(path.relative_to(PARTITIONS.parent)), before, after))
+        if immutable_changes:
+            preview = "; ".join(
+                f"{path}: {before} -> {after}" for path, before, after in immutable_changes[:3]
+            )
+            die(
+                f"partition {p} would change immutable stamped image refs without --bump. "
+                f"Rerun with --bump. Changes: {preview}"
+            )
     if not skip_push:
         cmd_push([p], registry=registry, dry_run=dry_run)
     if not skip_stamp:

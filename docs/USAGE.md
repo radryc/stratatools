@@ -80,6 +80,15 @@ What each step does:
    references into the partition YAML, pushes the partitions with
    `guardianctl`, reconciles them, and waits for convergence.
 
+When `dev-workspace` is part of the released set, the intended localhost
+access points are:
+
+- OpenVSCode: `http://localhost:8888/`
+- SSH: `ssh monofs@localhost -p 2222`
+
+SSH access also requires the `ssh-authorized-keys` config in the
+`dev-workspace` partition to contain your public key.
+
 ## What Gets Built
 
 Bootstrap build output:
@@ -169,6 +178,18 @@ Release a single partition:
 uv run st-release --partition doctor --wait
 uv run st-release --partition monitoring --wait
 ```
+
+Ingest the whole Strata repo set into MonoFS using each local checkout's
+`origin` remote and currently checked out ref:
+
+```bash
+uv run st-dogfood --router localhost:9090
+```
+
+`st-dogfood` discovers `stratatools` plus the sibling repositories cloned by
+`st-setup`. If `monofs-admin` is missing, it builds it into `~/bin` first.
+Use `--router` or `MONOFS_ROUTER` when the MonoFS router is reachable on a
+different address.
 
 Inspect known partitions:
 

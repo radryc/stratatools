@@ -1,7 +1,7 @@
 """st-image — build, push/load, and stamp partition images.
 
-Radically simplified port of ``ainfra/scripts/image``. Always stamps to
-``<registry>/<repo>:latest`` (or, in cluster-load mode, ``<repo>:latest``).
+Radically simplified port of ``ainfra/scripts/image``. Stamps immutable image
+refs derived from the local image content instead of mutable ``:latest`` tags.
 """
 from __future__ import annotations
 
@@ -112,6 +112,64 @@ def _image_repo_name(ref: str) -> str:
     return name
 
 
+def is_immutable_image_ref(ref: str) -> bool:
+    if "@sha256:" in ref:
+        return True
+    last_slash = ref.rfind("/")
+    name_and_tag = ref if last_slash == -1 else ref[last_slash + 1:]
+    if ":" not in name_and_tag:
+        return False
+    return name_and_tag.split(":", 1)[1].startswith("sha256-")
+
+
+def _image_id_suffix(image: str, dry_run: bool) -> str:
+    result = run(
+        ["docker", "image", "inspect", "--format", "{{.Id}}", image],
+        capture=True,
+        check=False,
+    )
+    if result and result.returncode == 0:
+        image_id = result.stdout.strip()
+        if image_id.startswith("sha256:"):
+            image_id = image_id.split(":", 1)[1]
+        if image_id:
+            return f"sha256-{image_id[:16]}"
+    if dry_run:
+        return "sha256-dry-run"
+    detail = ""
+    if result is not None:
+        detail = (result.stderr or result.stdout).strip()
+    die(f"failed to inspect docker image {image}: {detail or 'image not present locally'}")
+
+
+def _immutable_image_ref(source_ref: str, repo: str, registry: str, cluster_load: bool, dry_run: bool) -> str:
+    suffix = _image_id_suffix(source_ref, dry_run)
+    if cluster_load:
+        return f"{repo}:{suffix}"
+    return f"{registry}/{repo}:{suffix}"
+
+
+def _partition_targets(part: str) -> list[Path]:
+    part_dir = PARTITIONS / part
+    targets: list[Path] = []
+    for sub in ("intents", "payloads"):
+        d = part_dir / sub
+        if d.is_dir():
+            targets.extend(sorted(d.glob("*.yaml")))
+    return targets
+
+
+def _partition_mapping(part: str, registry: str, cluster_load: bool, dry_run: bool) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for tag, _e, _c in BUILD_RECIPES.get(part, []):
+        repo = tag.split(":", 1)[0]
+        mapping[tag] = _immutable_image_ref(tag, repo, registry, cluster_load, dry_run)
+    for upstream, local in MIRROR_RECIPES.get(part, []):
+        repo = local.split(":", 1)[0]
+        mapping[upstream] = _immutable_image_ref(upstream, repo, registry, cluster_load, dry_run)
+    return mapping
+
+
 def _build_repo_mapping(mapping: dict[str, str]) -> dict[str, str]:
     """Build a fallback mapping from bare repo name → target ref.
 
@@ -128,32 +186,32 @@ def _build_repo_mapping(mapping: dict[str, str]) -> dict[str, str]:
     return repo_map
 
 
-def _stamp_file(path: Path, mapping: dict[str, str], dry_run: bool) -> bool:
+def _stamp_file(path: Path, mapping: dict[str, str], dry_run: bool, *, announce: bool = True) -> list[tuple[str, str]]:
     try:
         data = yaml.safe_load(path.read_text())
     except Exception as e:
         warn(f"skip {path}: {e}")
-        return False
+        return []
     if data is None:
-        return False
-    changed = False
+        return []
     repo_map = _build_repo_mapping(mapping)
+    changes: list[tuple[str, str]] = []
 
     def walk(node):
-        nonlocal changed
         if isinstance(node, dict):
             for k, v in list(node.items()):
                 if k == "image" and isinstance(v, str):
+                    replacement = None
                     if v in mapping and mapping[v] != v:
-                        # exact key match and value differs → replace
-                        node[k] = mapping[v]
-                        changed = True
+                        replacement = mapping[v]
                     elif v not in mapping:
-                        # no exact match — try repo-name based fallback
                         repo = _image_repo_name(v)
                         if repo in repo_map and repo_map[repo] != v:
-                            node[k] = repo_map[repo]
-                            changed = True
+                            replacement = repo_map[repo]
+                    if replacement is not None:
+                        changes.append((v, replacement))
+                        if not dry_run:
+                            node[k] = replacement
                 else:
                     walk(v)
         elif isinstance(node, list):
@@ -161,12 +219,30 @@ def _stamp_file(path: Path, mapping: dict[str, str], dry_run: bool) -> bool:
                 walk(item)
 
     walk(data)
-    if not changed:
-        return False
-    info(f"  stamp {path.relative_to(ROOT)}")
+    if not changes:
+        return []
+    if announce:
+        info(f"  stamp {path.relative_to(ROOT)}")
     if not dry_run:
         path.write_text(yaml.safe_dump(data, sort_keys=False))
-    return True
+    return changes
+
+
+def planned_stamp_changes(partitions: list[str], registry: str, dry_run: bool) -> dict[str, list[tuple[Path, list[tuple[str, str]]]]]:
+    cluster_load = _cluster_load_mode(kubectl_context())
+    out: dict[str, list[tuple[Path, list[tuple[str, str]]]]] = {}
+    for part in partitions:
+        mapping = _partition_mapping(part, registry, cluster_load, dry_run)
+        if not mapping:
+            continue
+        file_changes: list[tuple[Path, list[tuple[str, str]]]] = []
+        for target in _partition_targets(part):
+            changes = _stamp_file(target, mapping, True, announce=False)
+            if changes:
+                file_changes.append((target, changes))
+        if file_changes:
+            out[part] = file_changes
+    return out
 
 
 def _cluster_load(image: str, dry_run: bool) -> None:
@@ -223,47 +299,35 @@ def cmd_push(partitions: list[str], registry: str, dry_run: bool) -> None:
          f"({'cluster-load' if cluster_load else 'registry push'})")
     for part in partitions:
         info(f"[{part}] {'load' if cluster_load else 'push'}")
+        mapping = _partition_mapping(part, registry, cluster_load, dry_run)
         for tag, _e, _c in BUILD_RECIPES.get(part, []):
+            target = mapping[tag]
+            run(["docker", "tag", tag, target], dry_run=dry_run)
             if cluster_load:
-                _cluster_load(tag, dry_run)
+                _cluster_load(target, dry_run)
             else:
-                remote = f"{registry}/{tag}"
-                run(["docker", "tag", tag, remote], dry_run=dry_run)
-                run(["docker", "push", remote], dry_run=dry_run)
+                run(["docker", "push", target], dry_run=dry_run)
         for upstream, local in MIRROR_RECIPES.get(part, []):
             run(["docker", "pull", upstream], dry_run=dry_run)
+            target = mapping[upstream]
+            run(["docker", "tag", upstream, target], dry_run=dry_run)
             if cluster_load:
-                local_tag = local.split(":", 1)[0] + ":latest"
-                run(["docker", "tag", upstream, local_tag], dry_run=dry_run)
-                _cluster_load(local_tag, dry_run)
+                _cluster_load(target, dry_run)
             else:
-                remote = f"{registry}/{local}"
-                run(["docker", "tag", upstream, remote], dry_run=dry_run)
-                run(["docker", "push", remote], dry_run=dry_run)
+                run(["docker", "push", target], dry_run=dry_run)
 
 
 def cmd_stamp(partitions: list[str], registry: str, dry_run: bool) -> None:
     cluster_load = _cluster_load_mode(kubectl_context())
     for part in partitions:
         info(f"[{part}] stamp")
-        mapping: dict[str, str] = {}
-        for tag, _e, _c in BUILD_RECIPES.get(part, []):
-            repo = tag.split(":", 1)[0]
-            mapping[tag] = tag if cluster_load else f"{registry}/{repo}:latest"
-        for upstream, local in MIRROR_RECIPES.get(part, []):
-            repo = local.split(":", 1)[0]
-            mapping[upstream] = f"{repo}:latest" if cluster_load else f"{registry}/{repo}:latest"
+        mapping = _partition_mapping(part, registry, cluster_load, dry_run)
         if not mapping:
             info("  (no images to stamp)")
             continue
-        part_dir = PARTITIONS / part
-        targets: list[Path] = []
-        for sub in ("intents", "payloads"):
-            d = part_dir / sub
-            if d.is_dir():
-                targets.extend(sorted(d.glob("*.yaml")))
+        targets = _partition_targets(part)
         if not targets:
-            info(f"  (no yaml files under {part_dir})")
+            info(f"  (no yaml files under {PARTITIONS / part})")
             continue
         for f in targets:
             _stamp_file(f, mapping, dry_run)

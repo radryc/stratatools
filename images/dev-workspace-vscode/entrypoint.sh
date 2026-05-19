@@ -11,6 +11,8 @@ set -euo pipefail
 : "${VSCODE_CONNECTION_TOKEN:=dev-workspace-token-change-me}"
 : "${VSCODE_DEFAULT_FOLDER:=${WORKSPACE_ROOT}}"
 : "${VSCODE_EXTENSIONS_DIR:=/home/monofs/.openvscode-server/extensions}"
+: "${SSH_PORT:=22}"
+: "${SSH_AUTHORIZED_KEYS_PATH:=/etc/dev-workspace/ssh/authorized_keys}"
 : "${KUBECONFIG:=/home/monofs/.kube/config}"
 : "${KUBE_NAMESPACE:=}"
 : "${MONOFS_CLIENT_LOG:=/var/log/monofs-client.log}"
@@ -19,10 +21,11 @@ set -euo pipefail
 service_account_dir="/var/run/secrets/kubernetes.io/serviceaccount"
 
 ensure_workspace_layout() {
-  mkdir -p "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$MONOFS_OVERLAY" "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR"
+  mkdir -p "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$MONOFS_OVERLAY" "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR" /home/monofs/.ssh
   touch "$MONOFS_CLIENT_LOG" "$MONOFS_CLIENT_JSON_LOG"
-  chown -R monofs:monofs "$WORKSPACE_ROOT" "$MONOFS_CACHE" /home/monofs/.monofs "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR"
+  chown -R monofs:monofs "$WORKSPACE_ROOT" "$MONOFS_CACHE" /home/monofs/.monofs /home/monofs/.ssh "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR"
   chown monofs:monofs "$MONOFS_CLIENT_LOG" "$MONOFS_CLIENT_JSON_LOG"
+  chmod 700 /home/monofs/.ssh
 
   if [[ ! -e "$WORKSPACE_ROOT/monofs" ]]; then
     ln -s "$MONOFS_MOUNT" "$WORKSPACE_ROOT/monofs"
@@ -35,6 +38,7 @@ ensure_workspace_layout() {
 MonoFS VS Code workspace
 
 - MonoFS mount is exposed at ./monofs
+- Remote SSH login is available as monofs when the partition's ssh-authorized-keys config is populated
 - Start a write session: monofs-session start
 - Show pending changes: monofs-session status
 - Commit changes: monofs-session commit
@@ -80,6 +84,24 @@ EOF
   chown monofs:monofs "$KUBECONFIG"
 }
 
+configure_ssh_access() {
+  install -d -o monofs -g monofs -m 0700 /home/monofs/.ssh
+  rm -f /home/monofs/.ssh/authorized_keys
+
+  if [[ -f "$SSH_AUTHORIZED_KEYS_PATH" ]]; then
+    grep -Ev '^[[:space:]]*(#|$)' "$SSH_AUTHORIZED_KEYS_PATH" > /home/monofs/.ssh/authorized_keys || true
+    if [[ -s /home/monofs/.ssh/authorized_keys ]]; then
+      chown monofs:monofs /home/monofs/.ssh/authorized_keys
+      chmod 600 /home/monofs/.ssh/authorized_keys
+      echo "[workspace] installed SSH authorized_keys for monofs" >&2
+      return 0
+    fi
+    rm -f /home/monofs/.ssh/authorized_keys
+  fi
+
+  echo "[workspace] no SSH public keys configured; Remote SSH login will remain disabled" >&2
+}
+
 start_monofs_client() {
   echo "[workspace] starting monofs-client against ${ROUTER_ADDR}" >&2
   su - monofs -c "/usr/local/bin/monofs-client \
@@ -105,6 +127,17 @@ wait_for_mount() {
 
   echo "[workspace] monofs mount is not ready yet; check ${MONOFS_CLIENT_LOG}" >&2
   return 0
+}
+
+start_sshd() {
+  mkdir -p /run/sshd
+  rm -f /run/sshd.pid
+  if ! compgen -G '/etc/ssh/ssh_host_*_key' >/dev/null; then
+    ssh-keygen -A
+  fi
+
+  echo "[workspace] starting sshd on port ${SSH_PORT}" >&2
+  /usr/sbin/sshd -o Port="$SSH_PORT"
 }
 
 start_vscode() {
@@ -135,6 +168,8 @@ start_vscode() {
 
 ensure_workspace_layout
 write_kubeconfig
+configure_ssh_access
 start_monofs_client
 wait_for_mount
+start_sshd
 start_vscode
