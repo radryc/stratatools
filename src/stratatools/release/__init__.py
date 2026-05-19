@@ -10,6 +10,7 @@ from typing import Optional
 
 import typer
 
+from stratatools.bootstrap import guardian as bootstrap_guardian
 from stratatools.util import PARTITIONS, die, info, run, warn
 from stratatools.image import cmd_build, cmd_push, cmd_stamp, is_immutable_image_ref, planned_stamp_changes
 
@@ -152,6 +153,8 @@ def main(
     parts = _resolve_partitions(partition, all_)
     reg = registry or DEFAULT_REGISTRY
     info(f"releasing partitions: {parts}")
+    if any(part in {"guardian-configs", "doctor"} for part in parts):
+        bootstrap_guardian.stamp_urls(dry_run)
     for p in parts:
         _release_one(
             p,

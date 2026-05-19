@@ -4,7 +4,6 @@ metadata:
   name: guardian-control-plane
 spec:
   intentType: standard
-  joins: []
   targetPusher: k8s-main
   target:
     cluster: k8s-main
@@ -13,75 +12,75 @@ spec:
   assets:
   - type: Compute
     name: guardian-control-plane
-    version: 20260511-1200
+    version: 20260519-1508
     properties:
-      image: guardian:latest
-      imagePullPolicy: IfNotPresent
       env:
-        GUARDIAN_MONOFS_ROUTER: monofs-external.monofs.svc.cluster.local:9090
-        GUARDIAN_MONOFS_CLIENT_API_ENDPOINT: monofs-external.monofs.svc.cluster.local:9090
-        GUARDIAN_MONOFS_TOKEN: guardian-dev-token
-        GUARDIAN_MONOFS_PRINCIPAL: guardiand
-        GUARDIAN_MONOFS_MOUNT_PATH: /
-        GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES: 'false'
-        GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES: 'true'
         GUARDIAN_CLIENT_DISCOVERY_TOKEN: guardian-dev-token
-        GUARDIAN_PRINCIPAL_ID: guardiand
-        GUARDIAN_UI_LISTEN: :8090
-        GUARDIAN_UI_BASE_URL: http://127.0.0.1:8090
-        GUARDIAN_RECONCILE_INTERVAL: 5m
         GUARDIAN_DEBOUNCE_MS: '250'
-        GUARDIAN_PUSHERS: k8s-main:/.queues/k8s-main
+        GUARDIAN_MONOFS_CLIENT_API_ENDPOINT: monofs-external.monofs.svc.cluster.local:9090
+        GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES: 'true'
+        GUARDIAN_MONOFS_MOUNT_PATH: /
+        GUARDIAN_MONOFS_PRINCIPAL: guardiand
+        GUARDIAN_MONOFS_ROUTER: monofs-external.monofs.svc.cluster.local:9090
+        GUARDIAN_MONOFS_TOKEN: guardian-dev-token
+        GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES: 'false'
         GUARDIAN_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
         GUARDIAN_OTEL_INSECURE: 'true'
-        GUARDIAN_OTEL_SERVICE_NAME: guardian
         GUARDIAN_OTEL_METRIC_INTERVAL: 15s
+        GUARDIAN_OTEL_SERVICE_NAME: guardian
+        GUARDIAN_PRINCIPAL_ID: guardiand
+        GUARDIAN_PUSHERS: k8s-main:/.queues/k8s-main
+        GUARDIAN_RECONCILE_INTERVAL: 5m
+        GUARDIAN_UI_BASE_URL: http://127.0.0.1:8090
+        GUARDIAN_UI_LISTEN: :8090
+      image: guardian:sha256-1286e9dda5f3a5b4
+      imagePullPolicy: IfNotPresent
+      ports:
+      - containerPort: 8090
+        name: http
+        protocol: TCP
+        servicePort: 8090
       resources:
-        requests:
-          cpu: 200m
-          memory: 256Mi
         limits:
           cpu: '1'
           memory: 512Mi
-      ports:
-      - name: http
-        containerPort: 8090
-        servicePort: 8090
-        protocol: TCP
+        requests:
+          cpu: 200m
+          memory: 256Mi
   - type: LoadBalancer
     name: guardian-ui
-    version: 20260511-1200
+    version: 20260519-1508
     dependsOn:
     - guardian-control-plane
     properties:
-      targets:
-      - guardian-control-plane
       listeners:
       - name: http
         port: 8090
         protocol: TCP
+      targets:
+      - guardian-control-plane
   - type: Compute
     name: guardian-kubernetes-pusher
-    version: 20260511-1200
+    version: 20260519-1508
     dependsOn:
     - guardian-control-plane
     properties:
-      image: guardian-pusher-k8s:latest
-      imagePullPolicy: IfNotPresent
       env:
-        GUARDIAN_PUSHER_NAME: k8s-main
         GUARDIAN_CLUSTER: k8s-main
         GUARDIAN_MONOFS_ROUTER: monofs-external.monofs.svc.cluster.local:9090
         GUARDIAN_MONOFS_TOKEN: guardian-dev-token
         GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES: 'false'
         GUARDIAN_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
         GUARDIAN_OTEL_INSECURE: 'true'
-        GUARDIAN_OTEL_SERVICE_NAME: guardian-pusher-k8s
         GUARDIAN_OTEL_METRIC_INTERVAL: 15s
+        GUARDIAN_OTEL_SERVICE_NAME: guardian-pusher-k8s
+        GUARDIAN_PUSHER_NAME: k8s-main
+      image: guardian-pusher-k8s:sha256-67232a645d1e9b2a
+      imagePullPolicy: IfNotPresent
       resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
         limits:
           cpu: 500m
           memory: 512Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi

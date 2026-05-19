@@ -9,8 +9,12 @@ The normal flow is:
 2. Run `st-setup` to clone the sibling repositories beside it.
 3. Run `st-bootstrap` to build host CLIs, build bootstrap images, and deploy
    bootstrap MonoFS + Guardian.
-4. Run `st-release --all` to build, distribute, stamp, and reconcile the
+4. Run `st-release --all --bump` to build, distribute, stamp, and reconcile the
    managed partitions.
+
+Use `--bump` for normal releases that rebuild or restamp images. Without it,
+`st-release` will refuse to change already stamped immutable image refs.
+Add `--wait` when you also want the command to block for convergence.
 
 ## Prerequisites
 
@@ -62,20 +66,25 @@ host prerequisites and a running Kubernetes cluster:
 ```bash
 uv run st-setup
 uv run st-bootstrap deploy
-uv run st-release --all --wait
+uv run st-release --all --bump --wait
 ```
 
 What each step does:
 
 1. `uv run st-setup`
    Clones the sibling repositories beside `stratatools` if they do not already
-   exist, then verifies Docker, kubectl, Go, Python, and cluster reachability.
+   exist, ensures `../monofs/.env` contains a shared
+   `MONOFS_ENCRYPTION_KEY`, then verifies Docker, kubectl, Go, Python, and
+   cluster reachability.
 2. `uv run st-bootstrap deploy`
    Builds `guardianctl`, `monofs-client`, `monofs-session`, and
    `monofs-search` into `~/bin`, deploys bootstrap MonoFS storage, deploys
    bootstrap Guardian, installs `metrics-server`, and applies the bootstrap
-   RBAC manifests used by OpenTelemetry, `k8s-top`, and the dev workspace.
-3. `uv run st-release --all --wait`
+   RBAC manifests used by OpenTelemetry, `k8s-top`, and the dev workspace,
+   reusing the same `MONOFS_ENCRYPTION_KEY` from `../monofs/.env`, then stamps
+   the current Guardian UI and host-reachable MonoFS client endpoint into the
+   checked-in partition config for later releases.
+3. `uv run st-release --all --bump --wait`
    Builds local partition images where needed, distributes them, stamps image
    references into the partition YAML, pushes the partitions with
    `guardianctl`, reconciles them, and waits for convergence.
@@ -84,7 +93,7 @@ When `dev-workspace` is part of the released set, the intended localhost
 access points are:
 
 - OpenVSCode: `http://localhost:8888/`
-- SSH: `ssh monofs@localhost -p 2222`
+- SSH: `ssh openvscode-server@localhost -p 2222`
 
 SSH access also requires the `ssh-authorized-keys` config in the
 `dev-workspace` partition to contain your public key.
@@ -140,8 +149,8 @@ uv run st-image build --partition doctor
 
 ## URL Stamping
 
-Use `st-bootstrap stamp-urls` when the host-reachable Guardian or Doctor
-endpoints change.
+Use `st-bootstrap stamp-urls` when the host-reachable Guardian UI, Doctor
+query, or Guardian MonoFS client endpoint changes.
 
 Typical usage:
 
@@ -189,7 +198,16 @@ uv run st-dogfood --router localhost:9090
 `st-dogfood` discovers `stratatools` plus the sibling repositories cloned by
 `st-setup`. If `monofs-admin` is missing, it builds it into `~/bin` first.
 Use `--router` or `MONOFS_ROUTER` when the MonoFS router is reachable on a
-different address.
+different address. When the router is local, `st-dogfood` expects the MonoFS
+router and fetchers to share `MONOFS_ENCRYPTION_KEY`; `st-setup` now seeds that
+key into `../monofs/.env`, bootstrap reuses it, and `st-dogfood` repairs a
+detected local or bootstrap MonoFS runtime to use that existing key if the
+active router is still missing the key wiring. `st-dogfood` does not create or
+rotate the key. The default dogfood set excludes `agent`.
+
+For stratatools commands, `../monofs/.env` is the canonical local key source.
+An ambient shell `MONOFS_ENCRYPTION_KEY` is only used to seed that file when it
+does not exist yet.
 
 Inspect known partitions:
 

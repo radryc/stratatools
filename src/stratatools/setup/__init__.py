@@ -12,6 +12,7 @@ from pathlib import Path
 
 import typer
 
+from stratatools.monofs_key import ensure_monofs_encryption_key
 from stratatools.util import ROOT, info, run
 
 PARTITIONS_DIR = ROOT / "partitions"
@@ -336,6 +337,18 @@ def main(
         clone_results = _clone_all(parent_dir, names, dry_run)
         for name, ok, dest in clone_results:
             info(_row(_mark("ok" if ok else "fail"), name, str(dest)))
+
+        monofs_dir = parent_dir / "monofs"
+        if monofs_dir.is_dir():
+            if dry_run:
+                info(_row(_mark("opt"), "monofs key", f"would ensure {monofs_dir / '.env'}"))
+            else:
+                try:
+                    key_state = ensure_monofs_encryption_key(repo_dir=monofs_dir)
+                except ValueError as exc:
+                    raise typer.Exit(code=1) from typer.BadParameter(str(exc))
+                detail = f"{key_state.env_file} ({'created' if key_state.created else 'reused'})"
+                info(_row(_mark("ok"), "monofs key", detail))
 
     # Install hints
     show_hints = (not no_install_hints) and (missing or not cluster_ok or missing_optional)

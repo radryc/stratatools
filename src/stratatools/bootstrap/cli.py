@@ -10,6 +10,7 @@ from pathlib import Path
 
 import typer
 
+from stratatools.monofs_key import ensure_monofs_encryption_key
 from stratatools.util import PARTITIONS, ROOT, die, info, run, warn
 from . import storage, guardian
 
@@ -90,6 +91,18 @@ def _ensure_secret_env(
 
 
 def _ensure_bootstrap_secrets(dry_run: bool) -> None:
+    try:
+        key_state = ensure_monofs_encryption_key(
+            repo_dir=MONOFS_REPO_DIR,
+            dry_run=dry_run,
+            create_if_missing=dry_run,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        die(f"{exc}. Run `st-setup` before bootstrap.")
+    if key_state.created:
+        action = "would ensure" if dry_run else "ensured"
+        info(f"{action} MONOFS_ENCRYPTION_KEY in {key_state.env_file} for bootstrap")
+
     _ensure_secret_env(
         "MONOFS_TOKEN",
         storage.NAMESPACE,
@@ -191,6 +204,7 @@ def deploy(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     guardian.build_images(dry_run)
     storage.deploy(dry_run)
     guardian.deploy(dry_run)
+    guardian.stamp_urls(dry_run)
     _install_prereqs(dry_run)
 
 
@@ -203,6 +217,7 @@ def rollout(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     guardian.build_images(dry_run)
     storage.rollout(dry_run)
     guardian.rollout(dry_run)
+    guardian.stamp_urls(dry_run)
 
 
 @app.command()
@@ -221,5 +236,5 @@ def destroy(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
 
 @app.command("stamp-urls")
 def stamp_urls(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
-    """Resolve external LB URL and stamp into partition YAMLs."""
+    """Resolve external URLs/endpoints and stamp them into partition YAMLs."""
     guardian.stamp_urls(dry_run)

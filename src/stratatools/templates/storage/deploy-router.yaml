@@ -34,6 +34,11 @@ spec:
             - --fetcher-addrs=fetcher-a:9200,fetcher-b:9200
             - --log-level=warn
           env:
+            - name: MONOFS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: monofs-secrets
+                  key: monofs-encryption-key
             - name: MONOFS_OTEL_ENDPOINT
               value: ${MONOFS_OTEL_ENDPOINT}
             - name: MONOFS_OTEL_INSECURE

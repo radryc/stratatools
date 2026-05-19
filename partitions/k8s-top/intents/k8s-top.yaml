@@ -12,7 +12,7 @@ spec:
   assets:
   - type: Compute
     name: k8s-top
-    version: 20260518-1422
+    version: 20260519-1508
     payload:
       k8s: /partitions/k8s-top/payloads/k8s-top.k8s.yaml
     properties:
@@ -23,7 +23,7 @@ spec:
         K8S_TOP_OTEL_METRIC_INTERVAL: 15s
         K8S_TOP_OTEL_SERVICE_NAME: k8s-top
         K8S_TOP_POLL_INTERVAL: 15s
-      image: k8s-top:latest
+      image: k8s-top:sha256-387c944038f12bf3
       imagePullPolicy: IfNotPresent
       resources:
         limits:

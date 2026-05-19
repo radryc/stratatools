@@ -1,1 +1,1 @@
-image: library/haproxy:latest
+image: library/haproxy:sha256-8150662849480051

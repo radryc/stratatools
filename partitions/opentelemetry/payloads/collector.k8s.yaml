@@ -1,1 +1,1 @@
-image: otel/opentelemetry-collector-contrib:latest
+image: otel/opentelemetry-collector-contrib:sha256-923eb1cfae32fe09

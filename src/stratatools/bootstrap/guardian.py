@@ -146,18 +146,33 @@ def _service_external_endpoint(
     return ""
 
 
-def _default_monofs_client_api_endpoint() -> str:
+def _resolve_service_external_endpoint(
+    namespace: str,
+    service_name: str,
+    port_name: str,
+    service_port: str,
+    *,
+    retries: int = 30,
+    sleep_s: float = 2.0,
+) -> str:
+    for _ in range(retries):
+        endpoint = _service_external_endpoint(namespace, service_name, port_name, service_port)
+        if endpoint:
+            return endpoint
+        time.sleep(sleep_s)
+    return ""
+
+
+def _guardian_monofs_client_api_endpoint() -> str:
+    configured = os.environ.get("GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", "").strip()
+    if configured:
+        return configured
     if ".svc.cluster.local" not in GUARDIAN_MONOFS_ROUTER:
         return GUARDIAN_MONOFS_ROUTER
-    endpoint = _service_external_endpoint(
+    endpoint = _resolve_service_external_endpoint(
         STORAGE_NAMESPACE, "monofs-external", "grpc", "9090"
     )
     return endpoint or GUARDIAN_MONOFS_ROUTER
-
-
-GUARDIAN_MONOFS_CLIENT_API_ENDPOINT = os.environ.get(
-    "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", _default_monofs_client_api_endpoint()
-)
 
 
 def _b64(s: str) -> str:
@@ -174,7 +189,7 @@ def _vars() -> dict:
         "GUARDIAN_IMAGE": GUARDIAN_IMAGE,
         "GUARDIAN_PUSHER_IMAGE": GUARDIAN_PUSHER_IMAGE,
         "GUARDIAN_MONOFS_ROUTER": GUARDIAN_MONOFS_ROUTER,
-        "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT": GUARDIAN_MONOFS_CLIENT_API_ENDPOINT,
+        "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT": _guardian_monofs_client_api_endpoint(),
         "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES": GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES,
         "GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES": GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES,
         "GUARDIAN_PUSHER_NAME": GUARDIAN_PUSHER_NAME,
@@ -418,6 +433,21 @@ def stamp_urls(dry_run: bool) -> None:
     _set_env_in_intent(gcp, "GUARDIAN_UI_BASE_URL", url)
     _set_top_key(gcfg, "guardian_ui_base_url", url)
     _set_env_in_intent(dq, "GUARDIAN_UI_BASE_URL", url)
+
+    monofs_client_api_endpoint = _service_external_endpoint(
+        STORAGE_NAMESPACE, "monofs-external", "grpc", "9090"
+    )
+    if monofs_client_api_endpoint:
+        info(f"guardian MonoFS client API endpoint: {monofs_client_api_endpoint}")
+        _set_env_in_intent(
+            gcp,
+            "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT",
+            monofs_client_api_endpoint,
+        )
+    else:
+        warn(
+            "monofs-external has no external gRPC endpoint yet; leaving client API endpoint unchanged"
+        )
 
     dip = _svc_ip(NAMESPACE, "doctor-query-external")
     if dip:

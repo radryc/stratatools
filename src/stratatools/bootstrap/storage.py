@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 from string import Template
 
+from stratatools.monofs_key import is_valid_monofs_encryption_key, resolve_monofs_encryption_key_state
 from stratatools.util import die, info, run, TEMPLATES, ROOT, warn
 
 NAMESPACE = os.environ.get("MONOFS_NAMESPACE", "monofs")
@@ -332,10 +333,14 @@ def _wait_rollout(deployment: str, dry_run: bool) -> None:
 
 def _vars() -> dict:
     monofs_token = os.environ.get("MONOFS_TOKEN") or secrets.token_urlsafe(32)
-    monofs_encryption_key = os.environ.get(
-        "MONOFS_ENCRYPTION_KEY",
-        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    )
+    monofs_encryption_key = resolve_monofs_encryption_key_state(
+        repo_dir=MONOFS_REPO_DIR
+    ).key
+    if not is_valid_monofs_encryption_key(monofs_encryption_key):
+        die(
+            "MONOFS_ENCRYPTION_KEY is not configured. Run `st-setup` first or set "
+            "MONOFS_ENCRYPTION_KEY before bootstrap."
+        )
     minio_ak = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
     minio_sk = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
     return {

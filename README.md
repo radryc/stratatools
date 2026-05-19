@@ -22,11 +22,17 @@ the sibling Strata repositories and drive the platform bring-up in a few
 commands:
 
 1. `st-setup` clones `guardian`, `doctor`, `monofs`, `kvs`, and the other
-   sibling repos beside `stratatools`.
+   sibling repos beside `stratatools`, then ensures a shared
+   `../monofs/.env` with `MONOFS_ENCRYPTION_KEY`.
 2. `st-bootstrap` builds the host CLIs, builds the bootstrap MonoFS and
-   Guardian images, and deploys the bootstrap control plane.
-3. `st-release --all` builds, distributes, stamps, and reconciles all managed
-   partitions.
+   Guardian images, and deploys the bootstrap control plane using that same
+   MonoFS encryption key.
+3. `st-release --all --bump` builds, distributes, stamps, and reconciles all
+   managed partitions.
+
+Use `--bump` for normal releases that rebuild or restamp images. Without it,
+`st-release` will refuse to change already stamped immutable image refs.
+Add `--wait` when you also want the command to block for convergence.
 
 `st-bootstrap build|deploy|rollout` also builds these host binaries into
 `~/bin` by default:
@@ -53,20 +59,58 @@ uv run st-setup
 uv run st-bootstrap deploy
 
 # build, distribute, stamp, and reconcile every managed partition
-uv run st-release --all
+uv run st-release --all --bump
 ```
+
+## Clean-Cluster Test
+
+For a brand-new or intentionally reset cluster, this is the shortest
+end-to-end validation flow:
+
+```bash
+uv run st-setup
+uv run st-bootstrap deploy
+uv run st-bootstrap stamp-urls
+uv run st-release --all --bump
+uv run st-dogfood --router localhost:9090
+```
+
+This covers:
+
+- shared `MONOFS_ENCRYPTION_KEY` creation in `../monofs/.env`
+- bootstrap MonoFS + Guardian deployment
+- release of every managed partition
+- ingestion of the default local Strata repositories into MonoFS
+
+Keep the same `MONOFS_ENCRYPTION_KEY` once MonoFS has ingested repositories.
+Rotating it after ingestion can make existing blob archives unreadable until
+they are re-ingested.
+
+`st-dogfood` excludes `agent` from the default ingestion set.
 
 After the `dev-workspace` partition is released locally, these loopback entry
 points are intended to be available:
 
 - OpenVSCode: `http://localhost:8888/`
-- SSH into the dev workspace: `ssh monofs@localhost -p 2222`
+- SSH into the dev workspace: `ssh openvscode-server@localhost -p 2222`
 
 SSH access also requires a public key to be configured in the
 `ssh-authorized-keys` config for the `dev-workspace` partition.
 
-If the external Guardian or Doctor endpoint changes, refresh the stamped
-partition config:
+Local `st-dogfood` ingest also requires the MonoFS router and fetchers to
+share `MONOFS_ENCRYPTION_KEY`. `st-setup` now seeds that key into
+`../monofs/.env`, and both bootstrap and dogfood reuse it. `st-dogfood` does
+not create or rotate the key; when `--router` points at localhost and the
+active runtime is missing the wiring, it only repairs the detected local or
+bootstrap MonoFS runtime to use the existing seeded key.
+
+For stratatools commands, `../monofs/.env` is the canonical local key source.
+An ambient shell `MONOFS_ENCRYPTION_KEY` is only used to seed that file when it
+does not exist yet.
+
+`st-bootstrap deploy` now stamps the current Guardian UI and host-reachable
+MonoFS client endpoint into the checked-in partition config automatically.
+If those external endpoints later change, refresh the stamped partition config:
 
 ```bash
 uv run st-bootstrap stamp-urls
