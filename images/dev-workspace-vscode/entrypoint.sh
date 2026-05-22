@@ -4,7 +4,7 @@ set -euo pipefail
 : "${ROUTER_ADDR:=monofs-external.storage-k8s.svc.cluster.local:9090}"
 : "${MONOFS_MOUNT:=/mnt/monofs}"
 : "${MONOFS_CACHE:=/var/cache/monofs}"
-: "${WORKSPACE_USER:=openvscode-server}"
+: "${WORKSPACE_USER:=developer}"
 : "${WORKSPACE_GROUP:=$WORKSPACE_USER}"
 if ! workspace_entry="$(getent passwd "$WORKSPACE_USER")"; then
   echo "[workspace] Linux user ${WORKSPACE_USER} does not exist" >&2
@@ -18,10 +18,11 @@ fi
 : "${WORKSPACE_HOME:=$workspace_home}"
 : "${MONOFS_OVERLAY:=${WORKSPACE_HOME}/.monofs/overlay}"
 : "${WORKSPACE_ROOT:=/workspace}"
+: "${MONOFS_WORKSPACE_LINK:=${WORKSPACE_ROOT}/monofs}"
 : "${VSCODE_HOST:=0.0.0.0}"
 : "${VSCODE_PORT:=3000}"
 : "${VSCODE_CONNECTION_TOKEN:=dev-workspace-token-change-me}"
-: "${VSCODE_DEFAULT_FOLDER:=${WORKSPACE_ROOT}}"
+: "${VSCODE_DEFAULT_FOLDER:=${MONOFS_WORKSPACE_LINK}}"
 : "${VSCODE_EXTENSIONS_DIR:=${WORKSPACE_HOME}/.openvscode-server/extensions}"
 : "${SSH_PORT:=22}"
 : "${SSH_AUTHORIZED_KEYS_PATH:=/etc/dev-workspace/ssh/authorized_keys}"
@@ -29,20 +30,26 @@ fi
 : "${KUBE_NAMESPACE:=}"
 : "${MONOFS_CLIENT_LOG:=/var/log/monofs-client.log}"
 : "${MONOFS_CLIENT_JSON_LOG:=/var/log/monofs-client.json}"
+: "${LITERTLM_LIB:=/opt/litertlm/lib}"
+: "${LITERTLM_MODEL_DIR:=${WORKSPACE_HOME}/.monofs/models}"
+: "${LITERTLM_MODEL_FILE:=gemma-4-E2B-it.litertlm}"
+: "${LITERTLM_MODEL_REPO:=litert-community/gemma-4-E2B-it-litert-lm}"
+: "${LITERTLM_MODEL_AUTO_DOWNLOAD:=true}"
+: "${LITERTLM_MODEL:=${LITERTLM_MODEL_DIR}/${LITERTLM_MODEL_FILE}}"
 
 service_account_dir="/var/run/secrets/kubernetes.io/serviceaccount"
 
 ensure_workspace_layout() {
-  mkdir -p "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$MONOFS_OVERLAY" "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR" "$WORKSPACE_HOME/.ssh"
+  mkdir -p "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$MONOFS_OVERLAY" "$LITERTLM_MODEL_DIR" "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR" "$WORKSPACE_HOME/.ssh"
   touch "$MONOFS_CLIENT_LOG" "$MONOFS_CLIENT_JSON_LOG"
   chown -R "$WORKSPACE_USER:$WORKSPACE_GROUP" "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$WORKSPACE_HOME/.monofs" "$WORKSPACE_HOME/.ssh" "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR"
   chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$MONOFS_CLIENT_LOG" "$MONOFS_CLIENT_JSON_LOG"
   chmod 700 "$WORKSPACE_HOME/.ssh"
 
-  if [[ ! -e "$WORKSPACE_ROOT/monofs" ]]; then
-    ln -s "$MONOFS_MOUNT" "$WORKSPACE_ROOT/monofs"
-  elif [[ -L "$WORKSPACE_ROOT/monofs" ]]; then
-    ln -sfn "$MONOFS_MOUNT" "$WORKSPACE_ROOT/monofs"
+  if [[ ! -e "$MONOFS_WORKSPACE_LINK" ]]; then
+    ln -s "$MONOFS_MOUNT" "$MONOFS_WORKSPACE_LINK"
+  elif [[ -L "$MONOFS_WORKSPACE_LINK" ]]; then
+    ln -sfn "$MONOFS_MOUNT" "$MONOFS_WORKSPACE_LINK"
   fi
 
   if [[ ! -e "$WORKSPACE_ROOT/README.monofs.txt" ]]; then
@@ -50,13 +57,44 @@ ensure_workspace_layout() {
 MonoFS VS Code workspace
 
 - MonoFS mount is exposed at ./monofs
-- Remote SSH login is available as openvscode-server when the partition's ssh-authorized-keys config is populated
+- Remote SSH login is available as developer when the partition's ssh-authorized-keys config is populated
 - Start a write session: mfs start
 - Show pending changes: mfs status
 - Commit changes: mfs commit
 - kubectl uses an in-cluster kubeconfig generated on container start
 EOF
     chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$WORKSPACE_ROOT/README.monofs.txt"
+  fi
+}
+
+ensure_litertlm_assets() {
+  if [[ ! -f "$LITERTLM_LIB/liblitertlm_c_cpu.so" ]]; then
+    echo "[workspace] LiteRT-LM CPU library missing at $LITERTLM_LIB/liblitertlm_c_cpu.so" >&2
+    echo "[workspace] expected to be baked into image from stratatools/images/dev-workspace-vscode/Dockerfile" >&2
+  fi
+
+  if [[ -f "$LITERTLM_MODEL" ]]; then
+    echo "[workspace] LiteRT-LM model present at $LITERTLM_MODEL" >&2
+    return 0
+  fi
+
+  if [[ "${LITERTLM_MODEL_AUTO_DOWNLOAD}" != "true" ]]; then
+    echo "[workspace] LiteRT-LM model missing and auto-download disabled" >&2
+    return 0
+  fi
+
+  local model_url
+  model_url="https://huggingface.co/${LITERTLM_MODEL_REPO}/resolve/main/${LITERTLM_MODEL_FILE}?download=true"
+
+  echo "[workspace] downloading LiteRT-LM model from ${LITERTLM_MODEL_REPO}/${LITERTLM_MODEL_FILE}" >&2
+  tmp_path="${LITERTLM_MODEL}.tmp"
+  if curl -fL --retry 3 --retry-delay 5 "$model_url" -o "$tmp_path"; then
+    mv "$tmp_path" "$LITERTLM_MODEL"
+    chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$LITERTLM_MODEL"
+    echo "[workspace] LiteRT-LM model downloaded to $LITERTLM_MODEL" >&2
+  else
+    rm -f "$tmp_path"
+    echo "[workspace] LiteRT-LM model download failed from $model_url" >&2
   fi
 }
 
@@ -180,6 +218,7 @@ start_vscode() {
 }
 
 ensure_workspace_layout
+ensure_litertlm_assets
 write_kubeconfig
 configure_ssh_access
 start_monofs_client

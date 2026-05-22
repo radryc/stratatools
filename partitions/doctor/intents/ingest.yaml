@@ -12,13 +12,13 @@ spec:
   assets:
   - type: Volume
     name: ingest-data
-    version: 20260519-1507
+    version: 20260521-1137
     properties:
       accessMode: ReadWriteOnce
       size: 20Gi
   - type: Compute
     name: ingest
-    version: 20260519-1507
+    version: 20260521-1137
     dependsOn:
     - ingest-data
     payload:
@@ -45,7 +45,7 @@ spec:
         DOCTOR_TRACE_BUFFER_MAX_BYTES: '4194304'
         DOCTOR_TRACE_BUFFER_MAX_RECORDS: '4096'
         DOCTOR_TRACE_BUFFER_WAL_DIR: /var/lib/doctor/trace-buffer
-      image: doctor-ingest:sha256-aeb350ff014cb903
+      image: doctor-ingest:sha256-9e8868cfd08c8b85
       imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 4317
@@ -68,7 +68,7 @@ spec:
         volume: ingest-data
   - type: LoadBalancer
     name: ingest-edge
-    version: 20260519-1507
+    version: 20260521-1137
     dependsOn:
     - ingest
     payload:

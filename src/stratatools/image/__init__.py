@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -57,7 +58,8 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
     "dev-workspace": [
         ("monofs-client:dev-base", ["--target", "client"], MONOFS_REPO_DIR),
         ("dev-workspace-vscode:latest",
-         ["-f", str(ROOT / "images" / "dev-workspace-vscode" / "Dockerfile")],
+         ["-f", str(ROOT / "images" / "dev-workspace-vscode" / "Dockerfile"),
+          "--build-arg", "BASE_IMAGE=monofs-client:dev-base"],
          AINFRA),
     ],
 }
@@ -92,6 +94,41 @@ def _resolve(partitions: Iterable[str] | None) -> list[str]:
 
 def _cluster_load_mode(ctx: str) -> bool:
     return ctx == "docker-desktop" or ctx.startswith("kind-")
+
+
+def _git_output(repo: Path, args: list[str], default: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return default
+    value = result.stdout.strip()
+    return value or default
+
+
+def _monofs_build_args() -> list[str]:
+    version = os.environ.get("MONOFS_BUILD_VERSION") or os.environ.get("BUILD_VERSION") or "dev"
+    commit = (
+        os.environ.get("MONOFS_BUILD_COMMIT")
+        or os.environ.get("BUILD_COMMIT")
+        or _git_output(MONOFS_REPO_DIR, ["rev-parse", "--short=12", "HEAD"], "unknown")
+    )
+    dirty = _git_output(MONOFS_REPO_DIR, ["status", "--porcelain"], "")
+    if dirty and not commit.endswith("-dirty"):
+        commit = f"{commit}-dirty"
+    build_time = (
+        os.environ.get("MONOFS_BUILD_TIME")
+        or os.environ.get("BUILD_TIME")
+        or datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    )
+    return [
+        "--build-arg", f"VERSION={version}",
+        "--build-arg", f"COMMIT={commit}",
+        "--build-arg", f"BUILD_TIME={build_time}",
+    ]
 
 
 def _image_repo_name(ref: str) -> str:
@@ -289,7 +326,8 @@ def cmd_build(partitions: list[str], dry_run: bool) -> None:
             continue
         info(f"[{part}] build")
         for tag, extra, ctx in recipes:
-            run(["docker", "build", "-t", tag, *extra, str(ctx)], dry_run=dry_run)
+            build_args = _monofs_build_args() if ctx == MONOFS_REPO_DIR else []
+            run(["docker", "build", "-t", tag, *extra, *build_args, str(ctx)], dry_run=dry_run)
 
 
 def cmd_push(partitions: list[str], registry: str, dry_run: bool) -> None:

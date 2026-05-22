@@ -93,7 +93,7 @@ When `dev-workspace` is part of the released set, the intended localhost
 access points are:
 
 - OpenVSCode: `http://localhost:8888/`
-- SSH: `ssh openvscode-server@localhost -p 2222`
+- SSH: `ssh developer@localhost -p 2222`
 
 SSH access also requires the `ssh-authorized-keys` config in the
 `dev-workspace` partition to contain your public key.

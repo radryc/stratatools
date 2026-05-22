@@ -9,11 +9,15 @@ This bundle mirrors the Guardian-manageable portion of the monitoring setup:
 Current dashboard set
 
 - `System / System - Live Topology`: a true Grafana node graph for Guardian, MonoFS, KVS, and Doctor, backed by live Prometheus edge queries with log and trace handoff panels underneath.
-- `System / K8s - Cluster Resource Watch`: pod and container CPU/memory from the standalone `k8s-top` exporter, plus exporter logs and scrape traces.
-- `System / K8s - Namespace And Pod Stats`: a metrics-only `k8s-top` board focused on namespace density, scrape cadence, and the hottest pods and containers.
+- `System / K8s - Cluster Resource Watch`: pod and container CPU/memory from the standalone `k8s-top` exporter, plus release markers, exporter logs, and scrape traces.
+- `System / K8s - Namespace And Pod Stats`: a `k8s-top` board focused on namespace density, scrape cadence, the hottest pods and containers, and release overlays.
+- `Guardian Rollouts / Guardian Rollouts - Partition Resource Lens`: partition CPU and memory from `k8s-top`, aligned with Guardian result logs and partition-level apply activity.
+- `Guardian Rollouts / Guardian Rollouts - Intent Correlation`: Guardian result logs filtered by partition and intent regex, with pod CPU and memory matched inside the selected partition namespace.
 - `MonoFS / MonoFS - Comprehensive Health`: router, server, and KVS health with MonoFS logs and trace-linked logs.
-- `Guardian / Guardian - Comprehensive Health`: control-loop health, partition and intent status, and rollout-task telemetry.
+- `Guardian / Guardian - Comprehensive Health`: control-loop health, partition and intent status, rollout-task telemetry, and release overlays.
 - `Doctor / Doctor - Comprehensive Health`: `doctor-ingest` and `doctor-query` liveness plus ingest backlog and accepted-signal throughput.
+
+The rollout dashboards only use Guardian-backed release signals. Current Guardian metrics plus `k8s-top` do not expose per-partition or per-intent network usage, so those dashboards intentionally stop at CPU, memory, and Guardian rollout activity.
 
 The Doctor dashboard expects the current Doctor code in this repo, which now exports `doctor_component_up`, `doctor_ingest_buffer_*`, and `doctor_ingest_*_accepted` metrics over OTEL.
 

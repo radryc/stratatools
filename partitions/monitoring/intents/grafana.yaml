@@ -12,7 +12,7 @@ spec:
     assets:
         - type: Config
           name: grafana-datasources
-          version: 20260519-1508
+          version: 20260521-1139
           properties:
             data:
                 datasources.yaml: |
@@ -59,7 +59,7 @@ spec:
             format: yaml
         - type: Config
           name: grafana-dashboards-provider
-          version: 20260519-1508
+          version: 20260521-1139
           properties:
             data:
                 dashboards.yaml: |
@@ -97,10 +97,18 @@ spec:
                         updateIntervalSeconds: 30
                         options:
                           path: /etc/grafana/dashboards/system
+                      - name: Guardian Rollouts
+                        folder: Guardian Rollouts
+                        type: file
+                        disableDeletion: false
+                        editable: true
+                        updateIntervalSeconds: 30
+                        options:
+                          path: /etc/grafana/dashboards/guardian-rollouts
             format: yaml
         - type: Config
           name: grafana-dashboards-monofs
-          version: 20260519-1508
+          version: 20260521-1139
           properties:
             data:
                 monofs-comprehensive-health.json: |
@@ -155,12 +163,12 @@ spec:
                               "uid": "doctor-logs"
                             },
                             "enable": true,
-                            "expr": "{service=\"release\"} | logfmt",
+                            "expr": "{service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\"",
                             "hide": false,
                             "iconColor": "#FF780A",
                             "name": "Releases",
-                            "titleFormat": "{{partition}} release",
-                            "textFormat": "version: {{version}}"
+                            "titleFormat": "{{partition}}/{{intent}} {{release}}",
+                            "textFormat": "deployment: {{deployment_revision}}"
                           }
                         ]
                       },
@@ -844,7 +852,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-guardian
-          version: 20260519-1508
+          version: 20260521-1139
           properties:
             data:
                 guardian-comprehensive-health.json: |
@@ -853,7 +861,7 @@ spec:
                       "title": "Guardian - Control Loop Flight Deck",
                       "tags": ["guardian", "health", "control-loop", "grafana-13", "logs", "traces"],
                       "schemaVersion": 39,
-                      "version": 3,
+                      "version": 4,
                       "refresh": "30s",
                       "time": {"from": "now-15m", "to": "now"},
                       "editable": true,
@@ -862,7 +870,20 @@ spec:
                         {"title": "Doctor", "type": "dashboards", "tags": ["doctor"]},
                         {"title": "System Graph", "type": "dashboards", "tags": ["system", "topology"]}
                       ],
-                      "annotations": {"list": []},
+                      "annotations": {
+                        "list": [
+                          {
+                            "datasource": {"type": "loki", "uid": "doctor-logs"},
+                            "enable": true,
+                            "expr": "{service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\"",
+                            "hide": false,
+                            "iconColor": "#FF780A",
+                            "name": "Releases",
+                            "titleFormat": "{{partition}}/{{intent}} {{release}}",
+                            "textFormat": "deployment: {{deployment_revision}}"
+                          }
+                        ]
+                      },
                       "templating": {"list": [
                         {"name": "filters", "label": "Metric filters", "type": "adhoc", "datasource": {"type": "prometheus", "uid": "prometheus"}, "hide": 0},
                         {"name": "traceId", "label": "Trace ID", "type": "textbox", "query": "latest", "current": {"text": "latest", "value": "latest"}, "hide": 0}
@@ -1192,7 +1213,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-doctor
-          version: 20260519-1508
+          version: 20260521-1139
           properties:
             data:
                 doctor-comprehensive-health.json: |
@@ -1247,12 +1268,12 @@ spec:
                               "uid": "doctor-logs"
                             },
                             "enable": true,
-                            "expr": "{service=\"release\"} | logfmt",
+                            "expr": "{service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\"",
                             "hide": false,
                             "iconColor": "#FF780A",
                             "name": "Releases",
-                            "titleFormat": "{{partition}} release",
-                            "textFormat": "version: {{version}}"
+                            "titleFormat": "{{partition}}/{{intent}} {{release}}",
+                            "textFormat": "deployment: {{deployment_revision}}"
                           }
                         ]
                       },
@@ -2035,7 +2056,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-system
-          version: 20260519-1508
+          version: 20260521-1139
           properties:
             data:
                 k8s-cluster-resource-watch.json: |
@@ -2044,7 +2065,7 @@ spec:
                       "title": "K8s - Cluster Resource Watch",
                       "tags": ["k8s", "cluster", "resources", "grafana-13", "metrics", "logs", "traces"],
                       "schemaVersion": 39,
-                      "version": 1,
+                      "version": 2,
                       "refresh": "15s",
                       "time": {"from": "now-15m", "to": "now"},
                       "editable": true,
@@ -2053,7 +2074,20 @@ spec:
                         {"title": "Doctor", "type": "dashboards", "tags": ["doctor"]},
                         {"title": "Guardian", "type": "dashboards", "tags": ["guardian"]}
                       ],
-                      "annotations": {"list": []},
+                      "annotations": {
+                        "list": [
+                          {
+                            "datasource": {"type": "loki", "uid": "doctor-logs"},
+                            "enable": true,
+                            "expr": "{service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\"",
+                            "hide": false,
+                            "iconColor": "#FF780A",
+                            "name": "Releases",
+                            "titleFormat": "{{partition}}/{{intent}} {{release}}",
+                            "textFormat": "deployment: {{deployment_revision}}"
+                          }
+                        ]
+                      },
                       "templating": {"list": [
                         {"name": "filters", "label": "Metric filters", "type": "adhoc", "datasource": {"type": "prometheus", "uid": "prometheus"}, "hide": 0},
                         {"name": "traceId", "label": "Trace ID", "type": "textbox", "query": "latest", "current": {"text": "latest", "value": "latest"}, "hide": 0}
@@ -2284,7 +2318,7 @@ spec:
                       "title": "K8s - Namespace And Pod Stats",
                       "tags": ["k8s", "cluster", "stats", "k8s-top", "grafana-13", "metrics"],
                       "schemaVersion": 39,
-                      "version": 1,
+                      "version": 2,
                       "refresh": "15s",
                       "time": {"from": "now-15m", "to": "now"},
                       "editable": true,
@@ -2293,7 +2327,20 @@ spec:
                         {"title": "System Graph", "type": "dashboards", "tags": ["system", "topology"]},
                         {"title": "Doctor", "type": "dashboards", "tags": ["doctor"]}
                       ],
-                      "annotations": {"list": []},
+                      "annotations": {
+                        "list": [
+                          {
+                            "datasource": {"type": "loki", "uid": "doctor-logs"},
+                            "enable": true,
+                            "expr": "{service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\"",
+                            "hide": false,
+                            "iconColor": "#FF780A",
+                            "name": "Releases",
+                            "titleFormat": "{{partition}}/{{intent}} {{release}}",
+                            "textFormat": "deployment: {{deployment_revision}}"
+                          }
+                        ]
+                      },
                       "templating": {"list": [
                         {"name": "filters", "label": "Metric filters", "type": "adhoc", "datasource": {"type": "prometheus", "uid": "prometheus"}, "hide": 0}
                       ]},
@@ -2598,12 +2645,12 @@ spec:
                               "uid": "doctor-logs"
                             },
                             "enable": true,
-                            "expr": "{service=\"release\"} | logfmt",
+                            "expr": "{service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\"",
                             "hide": false,
                             "iconColor": "#FF780A",
                             "name": "Releases",
-                            "titleFormat": "{{partition}} release",
-                            "textFormat": "version: {{version}}"
+                            "titleFormat": "{{partition}}/{{intent}} {{release}}",
+                            "textFormat": "deployment: {{deployment_revision}}"
                           }
                         ]
                       },
@@ -3196,14 +3243,398 @@ spec:
                       ]
                     }
             format: json
+        - type: Config
+          name: grafana-dashboards-guardian-rollouts
+          version: 20260521-1139
+          properties:
+            data:
+                guardian-intent-rollout-correlation.json: |
+                    {
+                      "uid": "guardian-intent-rollout-correlation",
+                      "title": "Guardian Rollouts - Intent Correlation",
+                      "tags": ["guardian-rollouts", "guardian-intent-correlation", "grafana-13", "metrics", "logs"],
+                      "schemaVersion": 39,
+                      "version": 1,
+                      "refresh": "15s",
+                      "time": {"from": "now-30m", "to": "now"},
+                      "editable": true,
+                      "links": [
+                        {"title": "Partition Lens", "type": "dashboards", "tags": ["guardian-releases", "partitions"]},
+                        {"title": "Guardian Health", "type": "dashboards", "tags": ["guardian"]},
+                        {"title": "K8s Cluster Watch", "type": "dashboards", "tags": ["k8s", "resources"]}
+                      ],
+                      "annotations": {
+                        "list": [
+                          {
+                            "datasource": {"type": "loki", "uid": "doctor-logs"},
+                            "enable": true,
+                            "expr": "{service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\" | partition=~\"$partition\" | intent=~\"$intent\"",
+                            "hide": false,
+                            "iconColor": "#FF780A",
+                            "name": "Guardian Intent Rollouts",
+                            "titleFormat": "{{partition}}/{{intent}} {{release}}",
+                            "textFormat": "deployment: {{deployment_revision}}"
+                          }
+                        ]
+                      },
+                      "templating": {
+                        "list": [
+                          {"name": "filters", "label": "Metric filters", "type": "adhoc", "datasource": {"type": "prometheus", "uid": "prometheus"}, "hide": 0},
+                          {"name": "partition", "label": "Partition Regex", "type": "textbox", "query": ".*", "current": {"text": ".*", "value": ".*"}, "hide": 0},
+                          {"name": "intent", "label": "Intent Regex", "type": "textbox", "query": ".*", "current": {"text": ".*", "value": ".*"}, "hide": 0}
+                        ]
+                      },
+                      "panels": [
+                        {
+                          "id": 1,
+                          "type": "text",
+                          "title": "Intent Rollout Correlation",
+                          "gridPos": {"h": 5, "w": 10, "x": 0, "y": 0},
+                          "options": {
+                            "mode": "markdown",
+                            "content": "### Guardian releases against pod resources\nGuardian release logs carry `partition`, `intent`, `release`, `deployment_revision`, and `status` after a tagged rollout is archived. CPU and memory are matched by pod names inside the selected partition namespace because the current Prometheus stream does not expose intent labels directly. Per-intent network usage is not available in the current Guardian + `k8s-top` data path."
+                          }
+                        },
+                        {
+                          "id": 2,
+                          "type": "stat",
+                          "title": "Guardian Release Events In Range",
+                          "datasource": {"type": "loki", "uid": "doctor-logs"},
+                          "gridPos": {"h": 5, "w": 4, "x": 10, "y": 0},
+                          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto"},
+                          "targets": [
+                            {"refId": "A", "expr": "sum(count_over_time({service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\" | partition=~\"$partition\" | intent=~\"$intent\" [$__range]))"}
+                          ]
+                        },
+                        {
+                          "id": 3,
+                          "type": "stat",
+                          "title": "Matching Pods",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 5, "w": 4, "x": 14, "y": 0},
+                          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto"},
+                          "targets": [
+                            {"refId": "A", "expr": "count(max by (k8s_pod_name) (k8s_top_pod_cpu_usage_millicores{k8s_namespace_name=~\"$partition\", k8s_pod_name=~\".*$intent.*\"})) OR vector(0)", "legendFormat": "pods"}
+                          ]
+                        },
+                        {
+                          "id": 4,
+                          "type": "stat",
+                          "title": "Matching CPU",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 5, "w": 3, "x": 18, "y": 0},
+                          "fieldConfig": {"defaults": {"unit": "m"}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto"},
+                          "targets": [
+                            {"refId": "A", "expr": "sum(k8s_top_pod_cpu_usage_millicores{k8s_namespace_name=~\"$partition\", k8s_pod_name=~\".*$intent.*\"}) OR vector(0)", "legendFormat": "cpu"}
+                          ]
+                        },
+                        {
+                          "id": 5,
+                          "type": "stat",
+                          "title": "Matching Memory",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 5, "w": 3, "x": 21, "y": 0},
+                          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto"},
+                          "targets": [
+                            {"refId": "A", "expr": "sum(k8s_top_pod_memory_usage_bytes{k8s_namespace_name=~\"$partition\", k8s_pod_name=~\".*$intent.*\"}) OR vector(0)", "legendFormat": "memory"}
+                          ]
+                        },
+                        {
+                          "id": 100,
+                          "type": "row",
+                          "title": "Guardian Intent Stream",
+                          "collapsed": false,
+                          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+                          "panels": []
+                        },
+                        {
+                          "id": 10,
+                          "type": "logs",
+                          "title": "Guardian Intent Releases",
+                          "datasource": {"type": "loki", "uid": "doctor-logs"},
+                          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 6},
+                          "options": {"showTime": true, "showLabels": true, "showCommonLabels": false, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"},
+                          "targets": [
+                            {"refId": "A", "expr": "{service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\" | partition=~\"$partition\" | intent=~\"$intent\"", "queryType": "range", "direction": "backward"}
+                          ]
+                        },
+                        {
+                          "id": 101,
+                          "type": "row",
+                          "title": "Matched Resource Signals",
+                          "collapsed": false,
+                          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 16},
+                          "panels": []
+                        },
+                        {
+                          "id": 20,
+                          "type": "timeseries",
+                          "title": "Matching Pod CPU",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 17},
+                          "fieldConfig": {"defaults": {"unit": "m", "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 18, "gradientMode": "opacity", "showPoints": "never", "axisPlacement": "auto"}}, "overrides": []},
+                          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"], "maxItems": 16}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                          "targets": [
+                            {"refId": "A", "expr": "max by (k8s_namespace_name, k8s_pod_name) (k8s_top_pod_cpu_usage_millicores{k8s_namespace_name=~\"$partition\", k8s_pod_name=~\".*$intent.*\"})", "legendFormat": "{{k8s_namespace_name}}/{{k8s_pod_name}}"}
+                          ]
+                        },
+                        {
+                          "id": 21,
+                          "type": "timeseries",
+                          "title": "Matching Pod Memory",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 17},
+                          "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 18, "gradientMode": "opacity", "showPoints": "never", "axisPlacement": "auto"}}, "overrides": []},
+                          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"], "maxItems": 16}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                          "targets": [
+                            {"refId": "A", "expr": "max by (k8s_namespace_name, k8s_pod_name) (k8s_top_pod_memory_usage_bytes{k8s_namespace_name=~\"$partition\", k8s_pod_name=~\".*$intent.*\"})", "legendFormat": "{{k8s_namespace_name}}/{{k8s_pod_name}}"}
+                          ]
+                        },
+                        {
+                          "id": 22,
+                          "type": "timeseries",
+                          "title": "Guardian Releases By Intent Filter",
+                          "datasource": {"type": "loki", "uid": "doctor-logs"},
+                          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 17},
+                          "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 16, "gradientMode": "opacity", "showPoints": "never", "axisPlacement": "auto"}}, "overrides": []},
+                          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"], "maxItems": 8}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                          "targets": [
+                            {"refId": "A", "expr": "sum by (release) (count_over_time({service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\" | partition=~\"$partition\" | intent=~\"$intent\" [$__interval]))"}
+                          ]
+                        },
+                        {
+                          "id": 23,
+                          "type": "bargauge",
+                          "title": "Top Matching Pods By CPU",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 25},
+                          "fieldConfig": {"defaults": {"unit": "m", "min": 0}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "minVizWidth": 12, "minVizHeight": 8},
+                          "targets": [
+                            {"refId": "A", "expr": "topk(12, max by (k8s_namespace_name, k8s_pod_name) (k8s_top_pod_cpu_usage_millicores{k8s_namespace_name=~\"$partition\", k8s_pod_name=~\".*$intent.*\"}))", "legendFormat": "{{k8s_namespace_name}}/{{k8s_pod_name}}"}
+                          ]
+                        },
+                        {
+                          "id": 24,
+                          "type": "bargauge",
+                          "title": "Top Matching Pods By Memory",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 25},
+                          "fieldConfig": {"defaults": {"unit": "bytes", "min": 0}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "minVizWidth": 12, "minVizHeight": 8},
+                          "targets": [
+                            {"refId": "A", "expr": "topk(12, max by (k8s_namespace_name, k8s_pod_name) (k8s_top_pod_memory_usage_bytes{k8s_namespace_name=~\"$partition\", k8s_pod_name=~\".*$intent.*\"}))", "legendFormat": "{{k8s_namespace_name}}/{{k8s_pod_name}}"}
+                          ]
+                        }
+                      ]
+                    }
+                guardian-partition-rollout-resource-lens.json: |
+                    {
+                      "uid": "guardian-partition-rollout-resource-lens",
+                      "title": "Guardian Rollouts - Partition Resource Lens",
+                      "tags": ["guardian-rollouts", "guardian-releases", "partitions", "k8s", "grafana-13", "metrics", "logs"],
+                      "schemaVersion": 39,
+                      "version": 1,
+                      "refresh": "15s",
+                      "time": {"from": "now-30m", "to": "now"},
+                      "editable": true,
+                      "links": [
+                        {"title": "Guardian Health", "type": "dashboards", "tags": ["guardian"]},
+                        {"title": "K8s Cluster Watch", "type": "dashboards", "tags": ["k8s", "resources"]},
+                        {"title": "Intent Correlation", "type": "dashboards", "tags": ["guardian-intent-correlation"]}
+                      ],
+                      "annotations": {
+                        "list": [
+                          {
+                            "datasource": {"type": "loki", "uid": "doctor-logs"},
+                            "enable": true,
+                            "expr": "{service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\"",
+                            "hide": false,
+                            "iconColor": "#FF780A",
+                            "name": "Guardian Rollouts",
+                            "titleFormat": "{{partition}}/{{intent}} {{release}}",
+                            "textFormat": "deployment: {{deployment_revision}}"
+                          }
+                        ]
+                      },
+                      "templating": {
+                        "list": [
+                          {"name": "filters", "label": "Metric filters", "type": "adhoc", "datasource": {"type": "prometheus", "uid": "prometheus"}, "hide": 0}
+                        ]
+                      },
+                      "panels": [
+                        {
+                          "id": 1,
+                          "type": "text",
+                          "title": "Guardian-Covered Rollouts",
+                          "gridPos": {"h": 5, "w": 10, "x": 0, "y": 0},
+                          "options": {
+                            "mode": "markdown",
+                            "content": "### Partition resources against Guardian rollouts\nThis board only uses Guardian-backed rollout signals: the annotation lane and release log stream come from Guardian result logs, while the resource graphs come from `k8s-top`. Current Guardian and `k8s-top` data do not expose per-partition network usage, so this board stays focused on CPU, memory, and rollout activity."
+                          }
+                        },
+                        {
+                          "id": 2,
+                          "type": "stat",
+                          "title": "Observed Partitions",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 5, "w": 3, "x": 10, "y": 0},
+                          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto"},
+                          "targets": [
+                            {"refId": "A", "expr": "count(count by (k8s_namespace_name) (k8s_top_pod_cpu_usage_millicores)) OR vector(0)", "legendFormat": "partitions"}
+                          ]
+                        },
+                        {
+                          "id": 3,
+                          "type": "stat",
+                          "title": "Healthy Partitions",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 5, "w": 3, "x": 13, "y": 0},
+                          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "orientation": "auto"},
+                          "targets": [
+                            {"refId": "A", "expr": "sum(guardian_dispatcher_partition_status_current{status=\"Healthy\"}) OR vector(0)", "legendFormat": "healthy"}
+                          ]
+                        },
+                        {
+                          "id": 4,
+                          "type": "stat",
+                          "title": "Succeeded Applies / h",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 5, "w": 4, "x": 16, "y": 0},
+                          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto"},
+                          "targets": [
+                            {"refId": "A", "expr": "sum(increase(guardian_result_executions{guardian_operation=\"APPLY\", guardian_status=\"Succeeded\"}[1h])) OR vector(0)", "legendFormat": "applies"}
+                          ]
+                        },
+                        {
+                          "id": 5,
+                          "type": "stat",
+                          "title": "Succeeded Diffs / h",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 5, "w": 4, "x": 20, "y": 0},
+                          "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto"},
+                          "targets": [
+                            {"refId": "A", "expr": "sum(increase(guardian_result_executions{guardian_operation=\"DIFF\", guardian_status=\"Succeeded\"}[1h])) OR vector(0)", "legendFormat": "diffs"}
+                          ]
+                        },
+                        {
+                          "id": 100,
+                          "type": "row",
+                          "title": "Partition Load",
+                          "collapsed": false,
+                          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+                          "panels": []
+                        },
+                        {
+                          "id": 10,
+                          "type": "timeseries",
+                          "title": "Partition CPU",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 6},
+                          "fieldConfig": {"defaults": {"unit": "m", "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 18, "gradientMode": "opacity", "showPoints": "never", "axisPlacement": "auto"}}, "overrides": []},
+                          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"], "maxItems": 12}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                          "targets": [
+                            {"refId": "A", "expr": "sum by (k8s_namespace_name) (k8s_top_pod_cpu_usage_millicores)", "legendFormat": "{{k8s_namespace_name}}"}
+                          ]
+                        },
+                        {
+                          "id": 11,
+                          "type": "timeseries",
+                          "title": "Partition Memory",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 6},
+                          "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 18, "gradientMode": "opacity", "showPoints": "never", "axisPlacement": "auto"}}, "overrides": []},
+                          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"], "maxItems": 12}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                          "targets": [
+                            {"refId": "A", "expr": "sum by (k8s_namespace_name) (k8s_top_pod_memory_usage_bytes)", "legendFormat": "{{k8s_namespace_name}}"}
+                          ]
+                        },
+                        {
+                          "id": 12,
+                          "type": "timeseries",
+                          "title": "Guardian Apply Rate By Partition",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 6},
+                          "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 16, "gradientMode": "opacity", "showPoints": "never", "axisPlacement": "auto"}}, "overrides": []},
+                          "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"], "maxItems": 12}, "tooltip": {"mode": "multi", "sort": "desc"}},
+                          "targets": [
+                            {"refId": "A", "expr": "sum by (guardian_partition) (rate(guardian_result_executions{guardian_operation=\"APPLY\", guardian_status=\"Succeeded\"}[$__rate_interval]))", "legendFormat": "{{guardian_partition}}"}
+                          ]
+                        },
+                        {
+                          "id": 13,
+                          "type": "bargauge",
+                          "title": "Top Partitions By CPU",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 14},
+                          "fieldConfig": {"defaults": {"unit": "m", "min": 0}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "minVizWidth": 12, "minVizHeight": 8},
+                          "targets": [
+                            {"refId": "A", "expr": "topk(12, sum by (k8s_namespace_name) (k8s_top_pod_cpu_usage_millicores))", "legendFormat": "{{k8s_namespace_name}}"}
+                          ]
+                        },
+                        {
+                          "id": 14,
+                          "type": "bargauge",
+                          "title": "Top Partitions By Memory",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 14},
+                          "fieldConfig": {"defaults": {"unit": "bytes", "min": 0}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "minVizWidth": 12, "minVizHeight": 8},
+                          "targets": [
+                            {"refId": "A", "expr": "topk(12, sum by (k8s_namespace_name) (k8s_top_pod_memory_usage_bytes))", "legendFormat": "{{k8s_namespace_name}}"}
+                          ]
+                        },
+                        {
+                          "id": 15,
+                          "type": "bargauge",
+                          "title": "Succeeded Applies By Partition",
+                          "datasource": {"type": "prometheus", "uid": "prometheus"},
+                          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 14},
+                          "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []},
+                          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true, "minVizWidth": 12, "minVizHeight": 8},
+                          "targets": [
+                            {"refId": "A", "expr": "sum by (guardian_partition) (guardian_result_executions{guardian_operation=\"APPLY\", guardian_status=\"Succeeded\"})", "legendFormat": "{{guardian_partition}}"}
+                          ]
+                        },
+                        {
+                          "id": 101,
+                          "type": "row",
+                          "title": "Guardian Release Stream",
+                          "collapsed": false,
+                          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 22},
+                          "panels": []
+                        },
+                        {
+                          "id": 20,
+                          "type": "logs",
+                          "title": "Guardian Release Results",
+                          "datasource": {"type": "loki", "uid": "doctor-logs"},
+                          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 23},
+                          "options": {"showTime": true, "showLabels": true, "showCommonLabels": false, "wrapLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending"},
+                          "targets": [
+                            {"refId": "A", "expr": "{service=\"guardian\"} |= \"results: release\" | logfmt | status=\"Succeeded\"", "queryType": "range", "direction": "backward"}
+                          ]
+                        }
+                      ]
+                    }
+            format: json
         - type: Volume
           name: grafana-storage
-          version: 20260519-1508
+          version: 20260521-1139
           properties:
             ephemeral: true
         - type: Compute
           name: grafana
-          version: 20260519-1508
+          version: 20260521-1139
           dependsOn:
             - grafana-datasources
             - grafana-dashboards-provider
@@ -3211,6 +3642,7 @@ spec:
             - grafana-dashboards-guardian
             - grafana-dashboards-doctor
             - grafana-dashboards-system
+            - grafana-dashboards-guardian-rollouts
             - grafana-storage
           payload:
             k8s: /partitions/monitoring/payloads/grafana.k8s.yaml
@@ -3231,6 +3663,9 @@ spec:
                   readOnly: true
                 - config: grafana-dashboards-system
                   path: /etc/grafana/dashboards/system
+                  readOnly: true
+                - config: grafana-dashboards-guardian-rollouts
+                  path: /etc/grafana/dashboards/guardian-rollouts
                   readOnly: true
             env:
                 GF_AUTH_ANONYMOUS_ENABLED: "true"
@@ -3260,7 +3695,7 @@ spec:
                   volume: grafana-storage
         - type: LoadBalancer
           name: grafana-edge
-          version: 20260519-1508
+          version: 20260521-1139
           dependsOn:
             - grafana
           payload:

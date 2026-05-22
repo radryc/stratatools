@@ -92,7 +92,7 @@ After the `dev-workspace` partition is released locally, these loopback entry
 points are intended to be available:
 
 - OpenVSCode: `http://localhost:8888/`
-- SSH into the dev workspace: `ssh openvscode-server@localhost -p 2222`
+- SSH into the dev workspace: `ssh developer@localhost -p 2222`
 
 SSH access also requires a public key to be configured in the
 `ssh-authorized-keys` config for the `dev-workspace` partition.

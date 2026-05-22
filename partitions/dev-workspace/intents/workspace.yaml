@@ -12,34 +12,35 @@ spec:
   assets:
   - type: Volume
     name: workspace-data
-    version: 20260519-1552
+    version: 20260521-1415
     properties:
       accessMode: ReadWriteOnce
       size: 20Gi
   - type: Volume
     name: monofs-state
-    version: 20260519-1552
+    version: 20260521-1415
     properties:
       accessMode: ReadWriteOnce
       size: 10Gi
   - type: Volume
     name: monofs-cache
-    version: 20260519-1552
+    version: 20260521-1415
     properties:
       accessMode: ReadWriteOnce
       size: 10Gi
   - type: Config
     name: ssh-authorized-keys
-    version: 20260519-1552
+    version: 20260521-1415
     properties:
       data:
-        authorized_keys: '# Add one SSH public key per line to enable Remote SSH access.
+        authorized_keys: '# replace with your ssh public key to enable SSH access
+          to the dev workspace
 
           '
       format: text
   - type: Compute
     name: vscode
-    version: 20260519-1552
+    version: 20260521-1415
     dependsOn:
     - workspace-data
     - monofs-state
@@ -55,19 +56,25 @@ spec:
         path: /etc/dev-workspace/ssh
         readOnly: true
       env:
-        GITFS_OVERLAY_DIR: /home/openvscode-server/.monofs/overlay
+        GITFS_OVERLAY_DIR: /home/developer/.monofs/overlay
         KUBE_NAMESPACE: dev-workspace
+        LITERTLM_LIB: /opt/litertlm/lib
+        LITERTLM_MODEL: /home/developer/.monofs/models/gemma-4-E2B-it.litertlm
+        LITERTLM_MODEL_AUTO_DOWNLOAD: 'true'
+        LITERTLM_MODEL_DIR: /home/developer/.monofs/models
+        LITERTLM_MODEL_FILE: gemma-4-E2B-it.litertlm
+        LITERTLM_MODEL_REPO: litert-community/gemma-4-E2B-it-litert-lm
         MONOFS_MOUNT: /mnt/monofs
         MONOFS_ROUTER: monofs-external.monofs.svc.cluster.local:9090
         ROUTER_ADDR: monofs-external.monofs.svc.cluster.local:9090
         VSCODE_CONNECTION_TOKEN: dev-workspace-token-change-me
-        VSCODE_DEFAULT_FOLDER: /workspace
+        VSCODE_DEFAULT_FOLDER: /workspace/monofs
         VSCODE_PORT: '8888'
         WORKSPACE_ROOT: /workspace
       hostBindMounts:
       - source: /dev/fuse
         target: /dev/fuse
-      image: dev-workspace-vscode:sha256-0e43bd845c2a981d
+      image: dev-workspace-vscode:sha256-e7e58313f3c86e8c
       imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 8888
@@ -89,13 +96,13 @@ spec:
       volumeMounts:
       - path: /workspace
         volume: workspace-data
-      - path: /home/openvscode-server/.monofs
+      - path: /home/developer/.monofs
         volume: monofs-state
       - path: /var/cache/monofs
         volume: monofs-cache
   - type: LoadBalancer
     name: vscode-edge
-    version: 20260519-1552
+    version: 20260521-1415
     dependsOn:
     - vscode
     payload:

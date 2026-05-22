@@ -14,7 +14,7 @@ spec:
   assets:
   - type: Compute
     name: query
-    version: 20260519-1507
+    version: 20260521-1137
     payload:
       k8s: /partitions/doctor/payloads/query.k8s.yaml
     properties:
@@ -29,7 +29,7 @@ spec:
         DOCTOR_OTEL_METRIC_INTERVAL: 15s
         DOCTOR_OTEL_SERVICE_NAME: doctor
         DOCTOR_QUERY_HTTP_ADDR: :18080
-      image: doctor-query:sha256-315a47c6861e9e6f
+      image: doctor-query:sha256-5c697b3fcc6671de
       imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 18080
@@ -45,7 +45,7 @@ spec:
           memory: 256Mi
   - type: LoadBalancer
     name: query-edge
-    version: 20260519-1507
+    version: 20260521-1137
     dependsOn:
     - query
     payload:
