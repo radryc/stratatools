@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import importlib
 import os
 import secrets
 import subprocess
@@ -29,12 +30,56 @@ LOCAL_BIN_DIR = Path(
 ).expanduser()
 GUARDIAN_REPO_DIR = Path(os.environ.get("GUARDIAN_REPO_DIR", str(AINFRA / "guardian")))
 MONOFS_REPO_DIR = Path(os.environ.get("MONOFS_REPO_DIR", str(AINFRA / "monofs")))
+BOOTSTRAP_ENV_FILE = Path(
+    os.environ.get("STRATATOOLS_BOOTSTRAP_ENV", str(ROOT / "bootstrap.local.env"))
+).expanduser()
 LOCAL_BIN_BUILD_TARGETS = [
     ("guardianctl", GUARDIAN_REPO_DIR, "./cmd/guardianctl"),
     ("monofs-client", MONOFS_REPO_DIR, "./cmd/monofs-client"),
     ("monofs-session", MONOFS_REPO_DIR, "./cmd/monofs-session"),
     ("monofs-search", MONOFS_REPO_DIR, "./cmd/monofs-search"),
 ]
+
+
+def _load_bootstrap_env() -> None:
+    if not BOOTSTRAP_ENV_FILE.exists():
+        return
+    try:
+        lines = BOOTSTRAP_ENV_FILE.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        warn(f"unable to read bootstrap env file {BOOTSTRAP_ENV_FILE}: {exc}")
+        return
+
+    loaded = 0
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and (
+            (value[0] == '"' and value[-1] == '"')
+            or (value[0] == "'" and value[-1] == "'")
+        ):
+            value = value[1:-1]
+        os.environ[key] = value
+        loaded += 1
+
+    if loaded:
+        info(f"loaded {loaded} bootstrap env values from {BOOTSTRAP_ENV_FILE}")
+
+
+def _reload_bootstrap_modules() -> None:
+    # guardian computes runtime defaults (including AWS pusher toggles) at import time.
+    # Reload after loading bootstrap.local.env so command execution picks up overrides.
+    importlib.reload(guardian)
 
 
 def _read_secret_key(namespace: str, secret_name: str, key: str) -> str:
@@ -190,6 +235,9 @@ def _install_prereqs(dry_run: bool) -> None:
 @app.command()
 def build(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Build local CLIs plus MonoFS + Guardian images."""
+    _load_bootstrap_env()
+    _reload_bootstrap_modules()
+    guardian.sync_local_aws_intent(dry_run)
     _install_local_bins(dry_run)
     storage.build_images(dry_run)
     guardian.build_images(dry_run)
@@ -198,6 +246,9 @@ def build(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
 @app.command()
 def deploy(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Build local CLIs and bootstrap images, then deploy storage + Guardian."""
+    _load_bootstrap_env()
+    _reload_bootstrap_modules()
+    guardian.sync_local_aws_intent(dry_run)
     _install_local_bins(dry_run)
     _ensure_bootstrap_secrets(dry_run)
     storage.build_images(dry_run)
@@ -211,6 +262,9 @@ def deploy(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
 @app.command()
 def rollout(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Build local CLIs, rebuild images, and restart deployments."""
+    _load_bootstrap_env()
+    _reload_bootstrap_modules()
+    guardian.sync_local_aws_intent(dry_run)
     _install_local_bins(dry_run)
     _ensure_bootstrap_secrets(dry_run)
     storage.build_images(dry_run)
@@ -237,4 +291,6 @@ def destroy(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
 @app.command("stamp-urls")
 def stamp_urls(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Resolve external URLs/endpoints and stamp them into partition YAMLs."""
+    _load_bootstrap_env()
+    _reload_bootstrap_modules()
     guardian.stamp_urls(dry_run)

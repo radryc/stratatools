@@ -1,0 +1,17 @@
+apiVersion: guardian/v1alpha1
+kind: Partition
+metadata:
+  name: agent
+  labels:
+    role: ai
+spec:
+  deletionPolicy: orphan
+  reconciliation:
+    mode: auto
+    interval: 1m
+  labels:
+    stack: k8s
+    component: agent
+    topology: kubernetes
+    managedBy: guardian
+    endpoint: http://k8s-svc-lb-k8s-main-agent-agent-agent-edge.agent.svc.cluster.local:9191

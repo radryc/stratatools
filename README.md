@@ -5,6 +5,7 @@
 Toolkit for building and deploying the whole ainfra (Strata) system. Provides:
 
 - `st-setup`     — clone required repos and verify kubernetes/docker readiness
+- `st-aws-setup` — provision IAM Roles Anywhere + CloudFormation deploy IAM roles for AWS pusher runners
 - `st-bootstrap` — phase 1 (storage) + phase 2 (Guardian) cluster bootstrap and install local CLIs into `~/bin`
 - `st-image`     — build / push / stamp partition images
 - `st-release`   — one-shot release pipeline (build → push → stamp → guardianctl)
@@ -30,6 +31,46 @@ commands:
 3. `st-release --all --bump` builds, distributes, stamps, and reconciles all
    managed partitions.
 
+### Optional AWS Setup
+
+If you run the AWS pusher flow, bootstrap AWS prerequisites with:
+
+```bash
+uv run st-aws-setup --aws-profile admin-prod --aws-default-region us-east-1
+```
+
+`admin-prod` is an AWS CLI profile name from `~/.aws/config`.
+In most org setups this is an AWS IAM Identity Center (SSO) profile.
+
+Typical setup:
+
+```bash
+aws configure sso --profile admin-prod
+aws sso login --profile admin-prod
+```
+
+Then run `st-aws-setup` with that profile.
+If you use environment credentials instead of profiles, you can omit
+`--aws-profile` and keep only `--aws-default-region`.
+
+AWS CLI SSO/profile docs:
+https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html
+
+To keep private AWS account details out of git, put AWS bootstrap overrides in
+`bootstrap.local.env`:
+
+```bash
+cp bootstrap.local.env.example bootstrap.local.env
+# edit bootstrap.local.env
+uv run st-bootstrap deploy
+```
+
+`bootstrap.local.env` is git-ignored and is auto-loaded by `st-bootstrap`
+commands (`build`, `deploy`, `rollout`, `stamp-urls`).
+
+AWS pusher deployment is opt-in: it is deployed only when
+`GUARDIAN_AWS_ACCOUNT` is set (for example in `bootstrap.local.env`).
+
 Use `--bump` for normal releases that rebuild or restamp images. Without it,
 `st-release` will refuse to change already stamped immutable image refs.
 Add `--wait` when you also want the command to block for convergence.
@@ -54,6 +95,10 @@ uv sync
 
 # clone sibling repos and verify prerequisites
 uv run st-setup
+
+# optional: set up AWS prerequisites and local private bootstrap overrides
+# uv run st-aws-setup --aws-profile admin-prod --aws-default-region us-east-1
+# cp bootstrap.local.env.example bootstrap.local.env
 
 # build bootstrap CLIs/images and deploy MonoFS + Guardian
 uv run st-bootstrap deploy
@@ -81,6 +126,9 @@ This covers:
 - bootstrap MonoFS + Guardian deployment
 - release of every managed partition
 - ingestion of the default local Strata repositories into MonoFS
+
+If you want parallel AWS + Kubernetes pushers during bootstrap, set
+`GUARDIAN_AWS_ACCOUNT` in `bootstrap.local.env` before `st-bootstrap deploy`.
 
 Keep the same `MONOFS_ENCRYPTION_KEY` once MonoFS has ingested repositories.
 Rotating it after ingestion can make existing blob archives unreadable until

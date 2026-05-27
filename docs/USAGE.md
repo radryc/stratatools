@@ -12,6 +12,34 @@ The normal flow is:
 4. Run `st-release --all --bump` to build, distribute, stamp, and reconcile the
    managed partitions.
 
+For AWS local deploy runners that need IAM Roles Anywhere credentials for
+CloudFormation-based deployments, use `st-aws-setup` to provision/update:
+
+- Roles Anywhere trust anchor
+- CloudFormation execution role
+- local deployer role + policy attachments
+- Roles Anywhere profile
+
+Example:
+
+```bash
+uv run st-aws-setup --root-ca-cert ~/local-pki/rootCA.pem --region us-east-1
+uv run st-aws-setup --aws-profile admin-prod --aws-default-region us-east-1
+```
+
+To keep private AWS account data out of git, put bootstrap overrides in a
+local env file:
+
+```bash
+cd stratatools
+cp bootstrap.local.env.example bootstrap.local.env
+# edit bootstrap.local.env with your account/role values
+uv run st-bootstrap deploy
+```
+
+`bootstrap.local.env` is git-ignored, and values from that file are loaded by
+`st-bootstrap` commands.
+
 Use `--bump` for normal releases that rebuild or restamp images. Without it,
 `st-release` will refuse to change already stamped immutable image refs.
 Add `--wait` when you also want the command to block for convergence.

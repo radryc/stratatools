@@ -6,6 +6,7 @@ import secrets
 import subprocess
 import time
 import re
+from pathlib import Path
 from string import Template
 
 import yaml
@@ -19,6 +20,9 @@ GUARDIAN_IMAGE = os.environ.get("GUARDIAN_IMAGE", "guardian:latest")
 GUARDIAN_PUSHER_IMAGE = os.environ.get(
     "GUARDIAN_PUSHER_IMAGE", "guardian-pusher-k8s:latest"
 )
+GUARDIAN_PUSHER_AWS_IMAGE = os.environ.get(
+    "GUARDIAN_PUSHER_AWS_IMAGE", "guardian-pusher-aws:latest"
+)
 GUARDIAN_MONOFS_ROUTER = os.environ.get(
     "GUARDIAN_MONOFS_ROUTER",
     f"monofs-external.{STORAGE_NAMESPACE}.svc.cluster.local:9090",
@@ -31,12 +35,33 @@ GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES = os.environ.get(
 )
 GUARDIAN_PUSHER_NAME = os.environ.get("GUARDIAN_PUSHER_NAME", "k8s-main")
 GUARDIAN_CLUSTER = os.environ.get("GUARDIAN_CLUSTER", GUARDIAN_PUSHER_NAME)
+GUARDIAN_AWS_ACCOUNT = os.environ.get("GUARDIAN_AWS_ACCOUNT", "").strip()
+GUARDIAN_AWS_REGION = os.environ.get("GUARDIAN_AWS_REGION", "us-east-1")
+_default_aws_pusher_name = f"aws-{GUARDIAN_AWS_ACCOUNT}" if GUARDIAN_AWS_ACCOUNT else ""
+GUARDIAN_AWS_PUSHER_NAME = os.environ.get("GUARDIAN_AWS_PUSHER_NAME", _default_aws_pusher_name).strip()
+GUARDIAN_AWS_ASSUME_ROLE_NAME = os.environ.get(
+    "GUARDIAN_AWS_ASSUME_ROLE_NAME", "GuardianCdkDeployRole"
+)
+
+
+def _aws_pusher_enabled() -> bool:
+    return bool(GUARDIAN_AWS_ACCOUNT and GUARDIAN_AWS_PUSHER_NAME)
+
+
+_default_pushers = [f"{GUARDIAN_PUSHER_NAME}:/.queues/{GUARDIAN_PUSHER_NAME}"]
+if _aws_pusher_enabled():
+    _default_pushers.append(f"{GUARDIAN_AWS_PUSHER_NAME}:/.queues/{GUARDIAN_AWS_PUSHER_NAME}")
+
 GUARDIAN_PUSHERS = os.environ.get(
-    "GUARDIAN_PUSHERS", f"{GUARDIAN_PUSHER_NAME}:/.queues/{GUARDIAN_PUSHER_NAME}"
+    "GUARDIAN_PUSHERS",
+    ",".join(_default_pushers),
 )
 GUARDIAN_UI_PORT = os.environ.get("GUARDIAN_UI_PORT", "8090")
 GUARDIAN_UI_LISTEN = os.environ.get("GUARDIAN_UI_LISTEN", f":{GUARDIAN_UI_PORT}")
 GUARDIAN_UI_BASE_URL = os.environ.get("GUARDIAN_UI_BASE_URL", "")
+LOCAL_AWS_INTENT_PATH = (
+    PARTITIONS / "guardian-configs" / "intents" / "guardian-aws-pusher.local.yaml"
+)
 
 
 def _kubectl_query(args: list[str]) -> str:
@@ -188,12 +213,17 @@ def _vars() -> dict:
         "EXTERNAL_SERVICE_TYPE": EXTERNAL_SERVICE_TYPE,
         "GUARDIAN_IMAGE": GUARDIAN_IMAGE,
         "GUARDIAN_PUSHER_IMAGE": GUARDIAN_PUSHER_IMAGE,
+        "GUARDIAN_PUSHER_AWS_IMAGE": GUARDIAN_PUSHER_AWS_IMAGE,
         "GUARDIAN_MONOFS_ROUTER": GUARDIAN_MONOFS_ROUTER,
         "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT": _guardian_monofs_client_api_endpoint(),
         "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES": GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES,
         "GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES": GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES,
         "GUARDIAN_PUSHER_NAME": GUARDIAN_PUSHER_NAME,
         "GUARDIAN_CLUSTER": GUARDIAN_CLUSTER,
+        "GUARDIAN_AWS_ACCOUNT": GUARDIAN_AWS_ACCOUNT,
+        "GUARDIAN_AWS_REGION": GUARDIAN_AWS_REGION,
+        "GUARDIAN_AWS_PUSHER_NAME": GUARDIAN_AWS_PUSHER_NAME,
+        "GUARDIAN_AWS_ASSUME_ROLE_NAME": GUARDIAN_AWS_ASSUME_ROLE_NAME,
         "GUARDIAN_PUSHERS": GUARDIAN_PUSHERS,
         "GUARDIAN_UI_PORT": GUARDIAN_UI_PORT,
         "GUARDIAN_UI_LISTEN": GUARDIAN_UI_LISTEN,
@@ -227,6 +257,8 @@ def build_images(dry_run: bool) -> None:
 
 
 _DEPLOYS = ["guardiand", "guardian-pusher-k8s"]
+if _aws_pusher_enabled():
+    _DEPLOYS.append("guardian-pusher-aws")
 _CLUSTER_ROLE_BINDINGS = [
     "guardian-cluster-admin",
     "guardian-pusher-cluster-admin",
@@ -242,6 +274,8 @@ def _apply_manifests(dry_run: bool) -> None:
     _apply(_render("svc-guardian-ui-external.yaml"), dry_run)
     _apply(_render("deploy-guardiand.yaml"), dry_run)
     _apply(_render("deploy-pusher-k8s.yaml"), dry_run)
+    if _aws_pusher_enabled():
+        _apply(_render("deploy-pusher-aws.yaml"), dry_run)
 
 
 def _wait_rollouts(dry_run: bool) -> None:
@@ -274,6 +308,63 @@ def rollout(dry_run: bool) -> None:
         dry_run=dry_run,
     )
     _wait_rollouts(dry_run)
+
+
+def sync_local_aws_intent(dry_run: bool) -> None:
+    """Create/remove a local-only guardian-configs intent for AWS pusher visibility."""
+    if not _aws_pusher_enabled():
+        if LOCAL_AWS_INTENT_PATH.exists():
+            info(f"removing local aws intent overlay: {LOCAL_AWS_INTENT_PATH}")
+            if not dry_run:
+                LOCAL_AWS_INTENT_PATH.unlink()
+        return
+
+    doc = {
+        "apiVersion": "guardian/v1alpha1",
+        "kind": "Intent",
+        "metadata": {"name": "guardian-aws-pusher"},
+        "spec": {
+            "intentType": "standard",
+            "targetPusher": GUARDIAN_PUSHER_NAME,
+            "target": {
+                "cluster": GUARDIAN_CLUSTER,
+                "namespace": "guardian-configs",
+            },
+            "locked": False,
+            "assets": [
+                {
+                    "type": "Compute",
+                    "name": "guardian-aws-pusher",
+                    "properties": {
+                        "env": {
+                            "GUARDIAN_ACCOUNT": GUARDIAN_AWS_ACCOUNT,
+                            "GUARDIAN_REGION": GUARDIAN_AWS_REGION,
+                            "GUARDIAN_PUSHER_NAME": GUARDIAN_AWS_PUSHER_NAME,
+                            "GUARDIAN_ASSUME_ROLE_NAME": GUARDIAN_AWS_ASSUME_ROLE_NAME,
+                            "GUARDIAN_MONOFS_ROUTER": GUARDIAN_MONOFS_ROUTER,
+                            "GUARDIAN_MONOFS_TOKEN": "guardian-dev-token",
+                            "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES": GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES,
+                            "GUARDIAN_OTEL_ENDPOINT": "k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317",
+                            "GUARDIAN_OTEL_INSECURE": "true",
+                            "GUARDIAN_OTEL_METRIC_INTERVAL": "15s",
+                            "GUARDIAN_OTEL_SERVICE_NAME": "guardian-pusher-aws",
+                        },
+                        "image": GUARDIAN_PUSHER_AWS_IMAGE,
+                        "imagePullPolicy": "IfNotPresent",
+                        "resources": {
+                            "limits": {"cpu": "1", "memory": "1Gi"},
+                            "requests": {"cpu": "200m", "memory": "256Mi"},
+                        },
+                    },
+                }
+            ],
+        },
+    }
+
+    info(f"writing local aws intent overlay: {LOCAL_AWS_INTENT_PATH}")
+    if dry_run:
+        return
+    LOCAL_AWS_INTENT_PATH.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
 
 
 def stop(dry_run: bool) -> None:

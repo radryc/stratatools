@@ -30,17 +30,11 @@ fi
 : "${KUBE_NAMESPACE:=}"
 : "${MONOFS_CLIENT_LOG:=/var/log/monofs-client.log}"
 : "${MONOFS_CLIENT_JSON_LOG:=/var/log/monofs-client.json}"
-: "${LITERTLM_LIB:=/opt/litertlm/lib}"
-: "${LITERTLM_MODEL_DIR:=${WORKSPACE_HOME}/.monofs/models}"
-: "${LITERTLM_MODEL_FILE:=gemma-4-E2B-it.litertlm}"
-: "${LITERTLM_MODEL_REPO:=litert-community/gemma-4-E2B-it-litert-lm}"
-: "${LITERTLM_MODEL_AUTO_DOWNLOAD:=true}"
-: "${LITERTLM_MODEL:=${LITERTLM_MODEL_DIR}/${LITERTLM_MODEL_FILE}}"
 
 service_account_dir="/var/run/secrets/kubernetes.io/serviceaccount"
 
 ensure_workspace_layout() {
-  mkdir -p "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$MONOFS_OVERLAY" "$LITERTLM_MODEL_DIR" "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR" "$WORKSPACE_HOME/.ssh"
+  mkdir -p "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$MONOFS_OVERLAY" "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR" "$WORKSPACE_HOME/.ssh"
   touch "$MONOFS_CLIENT_LOG" "$MONOFS_CLIENT_JSON_LOG"
   chown -R "$WORKSPACE_USER:$WORKSPACE_GROUP" "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$WORKSPACE_HOME/.monofs" "$WORKSPACE_HOME/.ssh" "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR"
   chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$MONOFS_CLIENT_LOG" "$MONOFS_CLIENT_JSON_LOG"
@@ -64,37 +58,6 @@ MonoFS VS Code workspace
 - kubectl uses an in-cluster kubeconfig generated on container start
 EOF
     chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$WORKSPACE_ROOT/README.monofs.txt"
-  fi
-}
-
-ensure_litertlm_assets() {
-  if [[ ! -f "$LITERTLM_LIB/liblitertlm_c_cpu.so" ]]; then
-    echo "[workspace] LiteRT-LM CPU library missing at $LITERTLM_LIB/liblitertlm_c_cpu.so" >&2
-    echo "[workspace] expected to be baked into image from stratatools/images/dev-workspace-vscode/Dockerfile" >&2
-  fi
-
-  if [[ -f "$LITERTLM_MODEL" ]]; then
-    echo "[workspace] LiteRT-LM model present at $LITERTLM_MODEL" >&2
-    return 0
-  fi
-
-  if [[ "${LITERTLM_MODEL_AUTO_DOWNLOAD}" != "true" ]]; then
-    echo "[workspace] LiteRT-LM model missing and auto-download disabled" >&2
-    return 0
-  fi
-
-  local model_url
-  model_url="https://huggingface.co/${LITERTLM_MODEL_REPO}/resolve/main/${LITERTLM_MODEL_FILE}?download=true"
-
-  echo "[workspace] downloading LiteRT-LM model from ${LITERTLM_MODEL_REPO}/${LITERTLM_MODEL_FILE}" >&2
-  tmp_path="${LITERTLM_MODEL}.tmp"
-  if curl -fL --retry 3 --retry-delay 5 "$model_url" -o "$tmp_path"; then
-    mv "$tmp_path" "$LITERTLM_MODEL"
-    chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$LITERTLM_MODEL"
-    echo "[workspace] LiteRT-LM model downloaded to $LITERTLM_MODEL" >&2
-  else
-    rm -f "$tmp_path"
-    echo "[workspace] LiteRT-LM model download failed from $model_url" >&2
   fi
 }
 
@@ -218,7 +181,6 @@ start_vscode() {
 }
 
 ensure_workspace_layout
-ensure_litertlm_assets
 write_kubeconfig
 configure_ssh_access
 start_monofs_client

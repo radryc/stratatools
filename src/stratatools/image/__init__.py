@@ -23,10 +23,11 @@ MONOFS_REPO_DIR = Path(os.environ.get("MONOFS_REPO_DIR", AINFRA / "monofs"))
 DOCTOR_REPO_DIR = Path(os.environ.get("DOCTOR_REPO_DIR", AINFRA / "doctor"))
 KVS_REPO_DIR = Path(os.environ.get("KVS_REPO_DIR", AINFRA / "kvs"))
 K8S_TOP_REPO_DIR = Path(os.environ.get("K8S_TOP_REPO_DIR", AINFRA / "k8s-top"))
+AGENT_REPO_DIR = Path(os.environ.get("AGENT_REPO_DIR", AINFRA / "agent"))
 
 PARTITIONS_LIST: list[str] = [
     "guardian-configs", "opentelemetry", "k8s-top",
-    "doctor", "monitoring", "dev-workspace",
+    "doctor", "monitoring", "dev-workspace", "agent",
 ]
 
 # Each recipe: (image_tag, extra_docker_build_args, build_context_dir)
@@ -38,6 +39,11 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
          GUARDIAN_REPO_DIR),
         ("guardian-pusher-k8s:latest",
          ["-f", str(GUARDIAN_REPO_DIR / "Dockerfile.pusher-k8s"),
+          "--build-context", f"monofs={MONOFS_REPO_DIR}",
+          "--build-context", f"kvs={KVS_REPO_DIR}"],
+         GUARDIAN_REPO_DIR),
+        ("guardian-pusher-aws:latest",
+         ["-f", str(GUARDIAN_REPO_DIR / "Dockerfile.pusher-aws"),
           "--build-context", f"monofs={MONOFS_REPO_DIR}",
           "--build-context", f"kvs={KVS_REPO_DIR}"],
          GUARDIAN_REPO_DIR),
@@ -62,6 +68,11 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
           "--build-arg", "BASE_IMAGE=monofs-client:dev-base"],
          AINFRA),
     ],
+    "agent": [
+        ("lagent-llm:latest", [], AGENT_REPO_DIR / "llm"),
+        ("lagent-backend:latest", [], AGENT_REPO_DIR / "backend"),
+        ("lagent-frontend:latest", [], AGENT_REPO_DIR / "frontend"),
+    ],
 }
 
 OTEL_UPSTREAM = "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.108.0"
@@ -76,6 +87,9 @@ MIRROR_RECIPES: dict[str, list[tuple[str, str]]] = {
     ],
     "monitoring": [
         (GRAFANA_UPSTREAM, "grafana/grafana:13.0.0"),
+        (HAPROXY_UPSTREAM, "library/haproxy:2.9"),
+    ],
+    "agent": [
         (HAPROXY_UPSTREAM, "library/haproxy:2.9"),
     ],
 }
@@ -293,6 +307,15 @@ def _cluster_load(image: str, dry_run: bool) -> None:
     if not nodes:
         die("no cluster nodes found")
     for node in nodes:
+        # Immutable refs can be safely skipped when already present on a node.
+        present = run(
+            ["docker", "exec", node, "ctr", "-n=k8s.io", "images", "inspect", image],
+            capture=True,
+            check=False,
+        )
+        if present and present.returncode == 0:
+            info(f"  skip {image} (already present) → {node}")
+            continue
         info(f"  load {image} → {node}")
         save = subprocess.Popen(["docker", "save", image], stdout=subprocess.PIPE)
         importer = subprocess.Popen(

@@ -12,7 +12,7 @@ spec:
     assets:
         - type: Config
           name: collector-config
-          version: 20260521-1140
+          version: 20260526-1227
           properties:
             data:
                 otel-collector.yaml: |
@@ -147,7 +147,7 @@ spec:
             format: yaml
         - type: Compute
           name: collector
-          version: 20260521-1140
+          version: 20260526-1227
           dependsOn:
             - collector-config
           payload:
@@ -183,7 +183,7 @@ spec:
                     memory: 256Mi
         - type: LoadBalancer
           name: collector-edge
-          version: 20260521-1140
+          version: 20260526-1227
           dependsOn:
             - collector
           payload:

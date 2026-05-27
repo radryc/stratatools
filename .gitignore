@@ -12,5 +12,8 @@ build/
 .registry-addr
 .registry-push-addr
 .env
+bootstrap.local.env
+partitions/guardian-configs/intents/guardian-aws-pusher.local.yaml
+partitions/lolipop/
 .coverage
 htmlcov/
