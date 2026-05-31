@@ -17,3 +17,9 @@ partitions/guardian-configs/intents/guardian-aws-pusher.local.yaml
 partitions/lolipop/
 .coverage
 htmlcov/
+
+# Vim swap files (may contain sensitive data)
+*.swp
+*.swo
+keys.txt
+mytoken.txt
