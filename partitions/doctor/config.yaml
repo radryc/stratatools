@@ -14,4 +14,4 @@ spec:
     component: doctor
     topology: kubernetes
     managedBy: guardian
-    endpoint: http://k8s-svc-lb-k8s-main-doctor-doctor-query-query-edge.doctor.svc.cluster.local:18080
+    endpoint: http://k8s-svc-compute-k8s-main-doctor-doctor-query-query.doctor.svc.cluster.local:18080

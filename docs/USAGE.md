@@ -112,6 +112,10 @@ What each step does:
    reusing the same `MONOFS_ENCRYPTION_KEY` from `../monofs/.env`, then stamps
    the current Guardian UI and host-reachable MonoFS client endpoint into the
    checked-in partition config for later releases.
+
+   Add `--dns` when you also want bootstrap to build `devdns`/`devdnsctl`,
+   start local devdns, and keep declared `DevDNSRoute` assets synced through
+   local `kubectl port-forward` processes.
 3. `uv run st-release --all --bump --wait`
    Builds local partition images where needed, distributes them, stamps image
    references into the partition YAML, pushes the partitions with
@@ -122,6 +126,15 @@ access points are:
 
 - OpenVSCode: `http://localhost:8888/`
 - SSH: `ssh developer@localhost -p 2222`
+
+When the Doctor partition is released and local devdns is active, the intended
+browser entry point is:
+
+- Doctor query UI: `http://doctor.strata/`
+
+For LAN-wide wildcard `.strata` DNS, run devdns on one reachable host, set
+`DEVDNS_SERVER_IP` to that host LAN IP, set `DEVDNS_DNS_ADDR=0.0.0.0:53`, and
+point your router or clients at that host as their DNS server.
 
 SSH access also requires the `ssh-authorized-keys` config in the
 `dev-workspace` partition to contain your public key.
@@ -203,10 +216,22 @@ Rebuild bootstrap binaries and images without deploying:
 uv run st-bootstrap build
 ```
 
+Build bootstrap binaries/images and the local devdns binaries:
+
+```bash
+uv run st-bootstrap build --dns
+```
+
 Rebuild bootstrap images and restart the bootstrap workloads:
 
 ```bash
 uv run st-bootstrap rollout
+```
+
+Restart bootstrap workloads and resync local devdns routes:
+
+```bash
+uv run st-bootstrap rollout --dns
 ```
 
 Release a single partition:

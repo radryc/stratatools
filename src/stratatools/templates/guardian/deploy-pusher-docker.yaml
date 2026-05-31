@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guardian-pusher-docker
+  namespace: ${NAMESPACE}
+  labels:
+    app: guardian-pusher-docker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guardian-pusher-docker
+  template:
+    metadata:
+      labels:
+        app: guardian-pusher-docker
+    spec:
+      serviceAccountName: guardian
+      containers:
+        - name: pusher
+          image: ${GUARDIAN_PUSHER_DOCKER_IMAGE}
+          env:
+            - name: GUARDIAN_PUSHER_NAME
+              value: "${GUARDIAN_DOCKER_PUSHER_NAME}"
+            - name: GUARDIAN_CLUSTER
+              value: "${GUARDIAN_DOCKER_CLUSTER}"
+            - name: GUARDIAN_MONOFS_ROUTER
+              value: "${GUARDIAN_MONOFS_ROUTER}"
+            - name: GUARDIAN_MONOFS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: guardian-secrets
+                  key: monofs-token
+            - name: GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES
+              value: "${GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES}"
+          volumeMounts:
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+      volumes:
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock

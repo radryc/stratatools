@@ -47,6 +47,11 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
           "--build-context", f"monofs={MONOFS_REPO_DIR}",
           "--build-context", f"kvs={KVS_REPO_DIR}"],
          GUARDIAN_REPO_DIR),
+        ("guardian-pusher-docker:latest",
+         ["-f", str(GUARDIAN_REPO_DIR / "Dockerfile.pusher-docker"),
+          "--build-context", f"monofs={MONOFS_REPO_DIR}",
+          "--build-context", f"kvs={KVS_REPO_DIR}"],
+         GUARDIAN_REPO_DIR),
     ],
     "opentelemetry": [],
     "k8s-top": [

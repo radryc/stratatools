@@ -12,19 +12,19 @@ spec:
   assets:
   - type: Volume
     name: llm-models
-    version: 20260526-1504
+    version: 20260527-0841
     properties:
       accessMode: ReadWriteOnce
       size: 20Gi
   - type: Volume
     name: lagent-data
-    version: 20260526-1504
+    version: 20260527-0841
     properties:
       accessMode: ReadWriteOnce
       size: 5Gi
   - type: Compute
     name: lagent-llm
-    version: 20260526-1504
+    version: 20260527-0841
     dependsOn:
     - llm-models
     payload:
@@ -38,7 +38,7 @@ spec:
         N_GPU_LAYERS: '99'
         PARALLEL: '1'
         THREADS: '4'
-      image: lagent-llm:sha256-fd759dfced91e7c5
+      image: lagent-llm:sha256-8bf76680c2f6bf1e
       imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 8080
@@ -57,7 +57,7 @@ spec:
         volume: llm-models
   - type: Compute
     name: lagent-backend
-    version: 20260526-1504
+    version: 20260527-0841
     dependsOn:
     - lagent-llm
     - lagent-data
@@ -75,7 +75,7 @@ spec:
         OTEL_EXPORTER_OTLP_INSECURE: 'true'
         OTEL_METRIC_EXPORT_INTERVAL_MS: '15000'
         OTEL_SERVICE_NAME: lagent-backend
-      image: lagent-backend:sha256-ed97b9919e0ab6ab
+      image: lagent-backend:sha256-e9d7009d272cd5f9
       imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 8090
@@ -94,7 +94,7 @@ spec:
         volume: lagent-data
   - type: Compute
     name: lagent-frontend
-    version: 20260526-1504
+    version: 20260527-0841
     dependsOn:
     - lagent-backend
     payload:
@@ -102,7 +102,7 @@ spec:
     properties:
       env:
         LAGENT_BACKEND_HOST: k8s-svc-compute-k8s-main-agent-agent-agent-lagent-backend.agent.svc.cluster.local
-      image: lagent-frontend:sha256-05599b3e4777a2b8
+      image: lagent-frontend:sha256-a0f26f420defc991
       imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 3000
@@ -118,7 +118,7 @@ spec:
           memory: 256Mi
   - type: LoadBalancer
     name: agent-edge
-    version: 20260526-1504
+    version: 20260527-0841
     dependsOn:
     - lagent-frontend
     payload:
