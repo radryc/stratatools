@@ -5,8 +5,10 @@ refs derived from the local image content instead of mutable ``:latest`` tags.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import subprocess
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -317,28 +319,55 @@ def _cluster_load(image: str, dry_run: bool) -> None:
     nodes = [n.split("/", 1)[1] for n in r.stdout.splitlines() if n.strip()]
     if not nodes:
         die("no cluster nodes found")
-    for node in nodes:
-        # Immutable refs can be safely skipped when already present on a node.
-        present = run(
+
+    # Check which nodes already have the image (in parallel — avoids N serial kubectl-execs).
+    def _needs_load(node: str) -> bool:
+        present = subprocess.run(
             ["docker", "exec", node, "ctr", "-n=k8s.io", "images", "inspect", image],
-            capture=True,
-            check=False,
+            capture_output=True,
         )
-        if present and present.returncode == 0:
+        return present.returncode != 0
+
+    with concurrent.futures.ThreadPoolExecutor() as ex:
+        needs_flags = list(ex.map(_needs_load, nodes))
+
+    nodes_to_load = []
+    for node, need in zip(nodes, needs_flags):
+        if need:
+            nodes_to_load.append(node)
+        else:
             info(f"  skip {image} (already present) → {node}")
-            continue
-        info(f"  load {image} → {node}")
-        save = subprocess.Popen(["docker", "save", image], stdout=subprocess.PIPE)
-        importer = subprocess.Popen(
-            ["docker", "exec", "-i", node, "ctr", "-n=k8s.io", "images", "import", "-"],
-            stdin=save.stdout,
-        )
-        if save.stdout is not None:
-            save.stdout.close()
-        importer.communicate()
-        save.wait()
-        if importer.returncode != 0 or save.returncode != 0:
-            die(f"cluster-load failed for {image} on {node}")
+
+    if not nodes_to_load:
+        return
+
+    # Save the image to a temp file once, then stream it into all nodes in parallel.
+    with tempfile.NamedTemporaryFile(suffix=".tar", delete=False) as tf:
+        tmp_path = Path(tf.name)
+
+    try:
+        save_result = subprocess.run(["docker", "save", "-o", str(tmp_path), image])
+        if save_result.returncode != 0:
+            die(f"docker save failed for {image}")
+
+        def _load_node(node: str) -> tuple[str, int]:
+            info(f"  load {image} → {node}")
+            with tmp_path.open("rb") as f:
+                proc = subprocess.Popen(
+                    ["docker", "exec", "-i", node, "ctr", "-n=k8s.io", "images", "import", "-"],
+                    stdin=f,
+                )
+            proc.wait()
+            return node, proc.returncode
+
+        with concurrent.futures.ThreadPoolExecutor() as ex:
+            results = list(ex.map(_load_node, nodes_to_load))
+
+        for node, rc in results:
+            if rc != 0:
+                die(f"cluster-load failed for {image} on {node}")
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 # Commands --------------------------------------------------------------------
