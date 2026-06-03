@@ -1,38 +1,38 @@
 apiVersion: guardian/v1alpha1
 kind: Intent
 metadata:
-  name: guardian-docker-pusher
-spec:
-  intentType: standard
-  targetPusher: docker-lolipop
-  target:
-    cluster: docker-main
-    namespace: guardian
-  locked: false
-  assets:
-  - type: Compute
     name: guardian-docker-pusher
-    version: 20260603-1603
-    properties:
-      env:
-        GUARDIAN_CLUSTER: docker-main
-        GUARDIAN_MONOFS_ROUTER: 172.21.63.46:9090
-        GUARDIAN_MONOFS_TOKEN: guardian-dev-token
-        GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES: 'true'
-        GUARDIAN_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
-        GUARDIAN_OTEL_INSECURE: 'true'
-        GUARDIAN_OTEL_METRIC_INTERVAL: 15s
-        GUARDIAN_OTEL_SERVICE_NAME: guardian-pusher-docker
-        GUARDIAN_PUSHER_NAME: docker-lolipop
-      hostBindMounts:
-      - source: /var/run/docker.sock
-        target: /var/run/docker.sock
-      image: guardian-pusher-docker:sha256-6a0d9c54c7fedbc1
-      imagePullPolicy: IfNotPresent
-      resources:
-        limits:
-          cpu: 500m
-          memory: 256Mi
-        requests:
-          cpu: 100m
-          memory: 128Mi
+spec:
+    intentType: standard
+    targetPusher: docker-lolipop
+    target:
+        cluster: docker-main
+        namespace: guardian
+    locked: false
+    assets:
+        - type: Compute
+          name: guardian-docker-pusher
+          version: 20260603-1657
+          properties:
+            env:
+                GUARDIAN_CLUSTER: docker-main
+                GUARDIAN_MONOFS_ROUTER: 172.18.0.4:9090
+                GUARDIAN_MONOFS_TOKEN: guardian-dev-token
+                GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES: "true"
+                GUARDIAN_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
+                GUARDIAN_OTEL_INSECURE: "true"
+                GUARDIAN_OTEL_METRIC_INTERVAL: 15s
+                GUARDIAN_OTEL_SERVICE_NAME: guardian-pusher-docker
+                GUARDIAN_PUSHER_NAME: docker-lolipop
+            hostBindMounts:
+                - source: /var/run/docker.sock
+                  target: /var/run/docker.sock
+            image: guardian-pusher-docker:sha256-6a0d9c54c7fedbc1
+            imagePullPolicy: IfNotPresent
+            resources:
+                limits:
+                    cpu: 500m
+                    memory: 256Mi
+                requests:
+                    cpu: 100m
+                    memory: 128Mi

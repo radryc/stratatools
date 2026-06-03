@@ -14,7 +14,7 @@ spec:
     assets:
         - type: Compute
           name: query
-          version: 20260603-1607
+          version: 20260603-1654
           payload:
             k8s: /partitions/doctor/payloads/query.k8s.yaml
           properties:

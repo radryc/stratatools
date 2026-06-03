@@ -1,4 +1,4 @@
-image: dev-workspace-vscode:sha256-90b6810489bc9f01
+image: dev-workspace-vscode:sha256-9da4433f32c063a7
 serviceAnnotations:
   guardian.intent/expose: 'true'
   guardian.intent/service-name: vscode-edge
