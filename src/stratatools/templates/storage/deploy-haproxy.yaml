@@ -15,6 +15,7 @@ spec:
       labels:
         app: monofs-haproxy
     spec:
+      hostNetwork: true
       containers:
         - name: lb-edge
           image: ${MONOFS_LB_IMAGE}
@@ -28,12 +29,7 @@ spec:
               value: "0.0.0.0:15051"
           ports:
             - containerPort: 9090
-              hostPort: 9090
             - containerPort: 8080
-              hostPort: 8080
             - containerPort: 8090
-              hostPort: 8090
             - containerPort: 18081
-              hostPort: 18081
             - containerPort: 15051
-              hostPort: 15051

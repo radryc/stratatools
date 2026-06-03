@@ -186,22 +186,6 @@ def _kind_config(worker_count: int) -> str:
         "    extraMounts:\n"
         "    - hostPath: /var/run/docker.sock\n"
         "      containerPath: /var/run/docker.sock\n"
-        "    extraPortMappings:\n"
-        "    - containerPort: 8080\n"
-        "      hostPort: 8080\n"
-        "      protocol: TCP\n"
-        "    - containerPort: 9090\n"
-        "      hostPort: 9090\n"
-        "      protocol: TCP\n"
-        "    - containerPort: 8090\n"
-        "      hostPort: 8090\n"
-        "      protocol: TCP\n"
-        "    - containerPort: 18081\n"
-        "      hostPort: 18081\n"
-        "      protocol: TCP\n"
-        "    - containerPort: 15051\n"
-        "      hostPort: 15051\n"
-        "      protocol: TCP\n"
     )
     lines = [
         "kind: Cluster",
