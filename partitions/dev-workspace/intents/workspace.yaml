@@ -94,21 +94,4 @@ spec:
         volume: monofs-state
       - path: /var/cache/monofs
         volume: monofs-cache
-  - type: LoadBalancer
-    name: vscode-edge
-    version: 20260603-1031
-    dependsOn:
-    - vscode
-    payload:
-      k8s: /partitions/dev-workspace/payloads/edge.k8s.yaml
-    properties:
-      listeners:
-      - name: http
-        port: 8888
-        protocol: TCP
-      - name: ssh
-        port: 2222
-        protocol: TCP
-      serviceType: LoadBalancer
-      targets:
-      - vscode
+

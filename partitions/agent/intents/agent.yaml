@@ -12,19 +12,19 @@ spec:
     assets:
         - type: Volume
           name: llm-models
-          version: 20260603-1030
+          version: 20260603-1324
           properties:
             accessMode: ReadWriteOnce
             size: 20Gi
         - type: Volume
           name: lagent-data
-          version: 20260603-1030
+          version: 20260603-1324
           properties:
             accessMode: ReadWriteOnce
             size: 5Gi
         - type: Compute
           name: lagent-llm
-          version: 20260603-1030
+          version: 20260603-1324
           dependsOn:
             - llm-models
           payload:
@@ -57,7 +57,7 @@ spec:
                   volume: llm-models
         - type: Compute
           name: lagent-backend
-          version: 20260603-1030
+          version: 20260603-1324
           dependsOn:
             - lagent-llm
             - lagent-data
@@ -93,7 +93,7 @@ spec:
                   volume: lagent-data
         - type: Compute
           name: lagent-frontend
-          version: 20260603-1030
+          version: 20260603-1324
           dependsOn:
             - lagent-backend
           payload:
@@ -115,18 +115,4 @@ spec:
                 requests:
                     cpu: 100m
                     memory: 256Mi
-        - type: LoadBalancer
-          name: agent-edge
-          version: 20260603-1030
-          dependsOn:
-            - lagent-frontend
-          payload:
-            k8s: /partitions/agent/payloads/edge.k8s.yaml
-          properties:
-            listeners:
-                - name: http
-                  port: 9191
-                  protocol: TCP
-            serviceType: LoadBalancer
-            targets:
-                - lagent-frontend
+

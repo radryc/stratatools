@@ -1,1 +1,5 @@
 image: grafana/grafana:sha256-73d08928237b0c95
+serviceAnnotations:
+  guardian.intent/expose: "true"
+  guardian.intent/service-name: grafana-edge
+  guardian.intent/external-port: "3000"

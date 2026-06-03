@@ -1,5 +1,0 @@
-image: lb:sha256-43a3b8497937a24a
-serviceAnnotations:
-  guardian.intent/expose: "true"
-  guardian.intent/service-name: agent-edge
-  guardian.intent/external-port: "9191"

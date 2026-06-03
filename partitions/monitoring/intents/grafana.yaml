@@ -1935,23 +1935,4 @@ spec:
       volumeMounts:
       - path: /var/lib/grafana
         volume: grafana-storage
-  # TODO(option-b): replace this LoadBalancer asset with a serviceAnnotations
-  # entry on the grafana Compute above (guardian.intent/expose + external-port).
-  # That lets the lb k8s-agent register grafana pods directly into main lb-edge
-  # (single hop) and removes this intermediate lb-edge pod entirely.
-  # Same refactor applies to: doctor-edge, agent-edge, dev-workspace-edge.
-  - type: LoadBalancer
-    name: grafana-edge
-    version: 20260603-1038
-    dependsOn:
-    - grafana
-    payload:
-      k8s: /partitions/monitoring/payloads/grafana-edge.k8s.yaml
-    properties:
-      listeners:
-      - name: http
-        port: 3000
-        protocol: TCP
-      serviceType: LoadBalancer
-      targets:
-      - grafana
+

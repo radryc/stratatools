@@ -181,21 +181,4 @@ spec:
                 requests:
                     cpu: 200m
                     memory: 256Mi
-        - type: LoadBalancer
-          name: collector-edge
-          version: 20260526-1227
-          dependsOn:
-            - collector
-          payload:
-            k8s: /partitions/opentelemetry/payloads/edge.k8s.yaml
-          properties:
-            listeners:
-                - name: otlp-grpc
-                  port: 4317
-                  protocol: TCP
-                - name: otlp-http
-                  port: 4318
-                  protocol: TCP
-            serviceType: LoadBalancer
-            targets:
-                - collector
+

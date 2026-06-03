@@ -43,18 +43,4 @@ spec:
         requests:
           cpu: 200m
           memory: 256Mi
-  - type: LoadBalancer
-    name: query-edge
-    version: 20260603-1034
-    dependsOn:
-    - query
-    payload:
-      k8s: /partitions/doctor/payloads/edge.k8s.yaml
-    properties:
-      listeners:
-      - name: http
-        port: 18080
-        protocol: TCP
-      serviceType: LoadBalancer
-      targets:
-      - query
+

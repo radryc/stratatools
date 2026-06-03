@@ -1,1 +1,5 @@
 image: lagent-frontend:sha256-1a6b570557f4c030
+serviceAnnotations:
+  guardian.intent/expose: "true"
+  guardian.intent/service-name: agent-edge
+  guardian.intent/external-port: "9191"

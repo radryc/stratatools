@@ -1,1 +1,5 @@
 image: dev-workspace-vscode:sha256-a6ffe4c155676ba0
+serviceAnnotations:
+  guardian.intent/expose: "true"
+  guardian.intent/service-name: vscode-edge
+  guardian.intent/external-port: "8888"

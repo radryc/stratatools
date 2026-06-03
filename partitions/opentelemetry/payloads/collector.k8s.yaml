@@ -1,1 +1,5 @@
 image: otel/opentelemetry-collector-contrib:sha256-923eb1cfae32fe09
+serviceAnnotations:
+  guardian.intent/expose: "true"
+  guardian.intent/service-name: otel-edge
+  guardian.intent/external-port: "4317"

@@ -1,5 +1,0 @@
-image: lb:latest
-serviceAnnotations:
-  guardian.intent/expose: "true"
-  guardian.intent/service-name: otel-edge
-  guardian.intent/external-port: "4317"

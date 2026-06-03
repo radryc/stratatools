@@ -1,1 +1,5 @@
 image: doctor-query:sha256-6c0e6810adc79bd9
+serviceAnnotations:
+  guardian.intent/expose: "true"
+  guardian.intent/service-name: doctor-edge
+  guardian.intent/external-port: "18080"
