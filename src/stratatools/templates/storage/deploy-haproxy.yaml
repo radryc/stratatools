@@ -23,7 +23,7 @@ spec:
           imagePullPolicy: ${MONOFS_IMAGE_PULL_POLICY}
           env:
             - name: LB_BOOTSTRAP
-              value: "monofs-grpc@grpc[MonoFS gRPC API]:9090=router-a.${NAMESPACE}.svc.cluster.local:9090,router-b.${NAMESPACE}.svc.cluster.local:9090;monofs-http@http[MonoFS HTTP UI]:8080=router-a.${NAMESPACE}.svc.cluster.local:8080,router-b.${NAMESPACE}.svc.cluster.local:8080;guardian-ui@http[Guardian UI]:8090=guardian-ui.${GUARDIAN_NAMESPACE}.svc.cluster.local:${GUARDIAN_UI_PORT}"
+              value: "monofs-grpc@grpc[MonoFS gRPC API]:9090=router-a.${NAMESPACE}.svc.cluster.local:9090,router-b.${NAMESPACE}.svc.cluster.local:9090;monofs-http@http[MonoFS HTTP UI]:8080=router-a.${NAMESPACE}.svc.cluster.local:8080,router-b.${NAMESPACE}.svc.cluster.local:8080;guardian-ui@http[Guardian UI]:8090=guardian-ui.${GUARDIAN_NAMESPACE}.svc.cluster.local:${GUARDIAN_UI_PORT};${LB_NODE_BOOTSTRAP}"
             - name: LB_REGISTRY_HTTP_ADDR
               value: "0.0.0.0:18081"
             - name: LB_REGISTRY_GRPC_ADDR
@@ -34,3 +34,5 @@ spec:
             - containerPort: 8090
             - containerPort: 18081
             - containerPort: 15051
+${LB_NODE_CONTAINER_PORTS}
+${LB_USER_SERVICE_CONTAINER_PORTS}

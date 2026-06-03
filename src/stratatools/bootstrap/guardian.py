@@ -39,6 +39,8 @@ GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES = os.environ.get(
 )
 GUARDIAN_PUSHER_NAME = os.environ.get("GUARDIAN_PUSHER_NAME", "k8s-main")
 GUARDIAN_CLUSTER = os.environ.get("GUARDIAN_CLUSTER", GUARDIAN_PUSHER_NAME)
+GUARDIAN_DOCKER_PUSHER_NAME = os.environ.get("GUARDIAN_DOCKER_PUSHER_NAME", "docker-lolipop")
+GUARDIAN_DOCKER_PUSHER_IMAGE = os.environ.get("GUARDIAN_DOCKER_PUSHER_IMAGE", "guardian-pusher-docker:latest")
 GUARDIAN_AWS_ACCOUNT = os.environ.get("GUARDIAN_AWS_ACCOUNT", "").strip()
 GUARDIAN_AWS_REGION = os.environ.get("GUARDIAN_AWS_REGION", "us-east-1")
 _default_aws_pusher_name = f"aws-{GUARDIAN_AWS_ACCOUNT}" if GUARDIAN_AWS_ACCOUNT else ""
@@ -52,7 +54,10 @@ def _aws_pusher_enabled() -> bool:
     return bool(GUARDIAN_AWS_ACCOUNT and GUARDIAN_AWS_PUSHER_NAME)
 
 
-_default_pushers = [f"{GUARDIAN_PUSHER_NAME}:/.queues/{GUARDIAN_PUSHER_NAME}"]
+_default_pushers = [
+    f"{GUARDIAN_PUSHER_NAME}:/.queues/{GUARDIAN_PUSHER_NAME}",
+    f"{GUARDIAN_DOCKER_PUSHER_NAME}:/.queues/{GUARDIAN_DOCKER_PUSHER_NAME}",
+]
 if _aws_pusher_enabled():
     _default_pushers.append(f"{GUARDIAN_AWS_PUSHER_NAME}:/.queues/{GUARDIAN_AWS_PUSHER_NAME}")
 
@@ -337,6 +342,61 @@ _CLUSTER_ROLE_BINDINGS = [
 ]
 
 
+_DOCKER_PUSHER_CONTAINER = "guardian-pusher-docker"
+
+
+def _read_monofs_token() -> str:
+    """Read the MonoFS token from the guardian-secrets Kubernetes secret."""
+    r = subprocess.run(
+        [
+            "kubectl", "-n", NAMESPACE, "get", "secret", "guardian-secrets",
+            "-o", "jsonpath={.data.monofs-token}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode == 0 and r.stdout.strip():
+        return base64.b64decode(r.stdout.strip()).decode()
+    return ""
+
+
+def _deploy_docker_pusher(dry_run: bool) -> None:
+    """Start the docker pusher as a Docker container (not in Kubernetes).
+
+    The docker pusher manages the docker-main cluster (Docker containers).
+    It needs the Docker socket and a MonoFS router address reachable from
+    outside the cluster — lb-edge's host IP is directly accessible from
+    any Docker container on the bridge network.
+    """
+    info(f"=== deploying {GUARDIAN_DOCKER_PUSHER_NAME} as Docker container ===")
+    router = f"{_lb_edge_host()}:9090"
+    token = _read_monofs_token() if not dry_run else "<monofs-token>"
+    if not token and not dry_run:
+        warn("cannot read monofs token from guardian-secrets — docker pusher may fail to connect")
+
+    run(["docker", "rm", "-f", _DOCKER_PUSHER_CONTAINER], check=False, dry_run=dry_run)
+    run(
+        [
+            "docker", "run", "-d",
+            "--restart=unless-stopped",
+            "--name", _DOCKER_PUSHER_CONTAINER,
+            "-v", "/var/run/docker.sock:/var/run/docker.sock",
+            "-e", f"GUARDIAN_PUSHER_NAME={GUARDIAN_DOCKER_PUSHER_NAME}",
+            "-e", "GUARDIAN_CLUSTER=docker-main",
+            "-e", f"GUARDIAN_MONOFS_ROUTER={router}",
+            "-e", f"GUARDIAN_MONOFS_TOKEN={token}",
+            "-e", "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES=true",
+            GUARDIAN_DOCKER_PUSHER_IMAGE,
+        ],
+        dry_run=dry_run,
+    )
+
+
+def _stop_docker_pusher(dry_run: bool) -> None:
+    run(["docker", "stop", _DOCKER_PUSHER_CONTAINER], check=False, dry_run=dry_run)
+    run(["docker", "rm", _DOCKER_PUSHER_CONTAINER], check=False, dry_run=dry_run)
+
+
 def _apply_manifests(dry_run: bool) -> None:
     info(f"=== deploying guardian to namespace {NAMESPACE} ===")
     _apply(_render("namespace.yaml"), dry_run)
@@ -372,6 +432,7 @@ def _wait_rollouts(dry_run: bool) -> None:
 
 def deploy(dry_run: bool) -> None:
     _apply_manifests(dry_run)
+    _deploy_docker_pusher(dry_run)
     # Stamp URLs (incl. GUARDIAN_MONOFS_CLIENT_API_ENDPOINT) before waiting so
     # guardiand only restarts once instead of twice.
     stamp_urls(dry_run)
@@ -380,6 +441,7 @@ def deploy(dry_run: bool) -> None:
 
 def rollout(dry_run: bool) -> None:
     _apply_manifests(dry_run)
+    _deploy_docker_pusher(dry_run)
     run(
         ["kubectl", "-n", NAMESPACE, "rollout", "restart", "deployment"],
         check=False,
@@ -447,6 +509,7 @@ def sync_local_aws_intent(dry_run: bool) -> None:
 
 
 def stop(dry_run: bool) -> None:
+    _stop_docker_pusher(dry_run)
     run(
         ["kubectl", "-n", NAMESPACE, "scale", "deployment", "--all", "--replicas=0"],
         check=False,
@@ -562,6 +625,36 @@ def _set_env_in_intent(path, env_name: str, value: str) -> bool:
     return changed
 
 
+def _set_dict_env_in_intent(path, env_name: str, value: str) -> bool:
+    """Like _set_env_in_intent but for dict-style env maps (key: value)."""
+    if not path.exists():
+        return False
+    docs = list(yaml.safe_load_all(path.read_text()))
+    changed = False
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        for env_map in _walk_dict_envs(doc):
+            if env_name in env_map:
+                env_map[env_name] = value
+                changed = True
+    if changed:
+        path.write_text(yaml.safe_dump_all(docs, sort_keys=False))
+    return changed
+
+
+def _walk_dict_envs(node):
+    """Yield dict-style env maps (properties.env: {KEY: VALUE})."""
+    if isinstance(node, dict):
+        if "env" in node and isinstance(node["env"], dict):
+            yield node["env"]
+        for v in node.values():
+            yield from _walk_dict_envs(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _walk_dict_envs(v)
+
+
 def _walk_envs(node):
     if isinstance(node, dict):
         if "env" in node and isinstance(node["env"], list):
@@ -653,13 +746,14 @@ def client_discovery_token() -> str:
 
 def stamp_urls(dry_run: bool) -> None:
     gcp = PARTITIONS / "guardian-configs" / "intents" / "guardian-control-plane.yaml"
+    gdp = PARTITIONS / "guardian-configs" / "intents" / "guardian-docker-pusher.yaml"
     gcfg = PARTITIONS / "guardian-configs" / "config.yaml"
     dq = PARTITIONS / "doctor" / "intents" / "query.yaml"
     dcfg = PARTITIONS / "doctor" / "config.yaml"
 
     if dry_run:
         info("would stamp lb-edge URLs into partition configs")
-        info(f"would update: {gcp}, {gcfg}, {dq}, {dcfg}")
+        info(f"would update: {gcp}, {gdp}, {gcfg}, {dq}, {dcfg}")
         return
 
     host = _lb_edge_host()
@@ -676,6 +770,11 @@ def stamp_urls(dry_run: bool) -> None:
     monofs_grpc_endpoint = f"{host}:9090"
     info(f"guardian MonoFS client API endpoint (via lb-edge): {monofs_grpc_endpoint}")
     _set_env_in_intent(gcp, "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", monofs_grpc_endpoint)
+
+    # The docker pusher runs outside Kubernetes and can't use in-cluster DNS.
+    # Stamp the lb-edge host IP so it can reach MonoFS directly.
+    info(f"docker pusher MonoFS router (via lb-edge): {monofs_grpc_endpoint}")
+    _set_dict_env_in_intent(gdp, "GUARDIAN_MONOFS_ROUTER", monofs_grpc_endpoint)
 
     dip = _svc_ip(NAMESPACE, "doctor-query-external")
     if dip:

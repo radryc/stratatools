@@ -50,6 +50,15 @@ LB_LOCAL_ADMIN_PORT = int(os.environ.get("LB_LOCAL_ADMIN_PORT", "18081"))
 NODE_NAMES = ("node-a", "node-b", "node-c", "node-d", "node-e")
 ROUTER_SUFFIXES = ("a", "b")
 
+# Extra ports for user-facing services registered dynamically by lb-k8s-agent
+# (e.g. agent frontend=9191, vscode=8888). These are added to both the
+# monofs-external K8s Service and the local port-forward so they're reachable
+# on 172.21.63.46:<port> from Windows. Space-separated list of port numbers.
+_LB_EXTRA_PORTS_RAW = os.environ.get("LB_USER_SERVICE_PORTS", "9191 8888")
+LB_USER_SERVICE_PORTS: list[int] = [
+    int(p) for p in _LB_EXTRA_PORTS_RAW.split() if p.strip().isdigit()
+]
+
 
 def _b64(s: str) -> str:
     return base64.b64encode(s.encode()).decode()
@@ -83,6 +92,60 @@ def _default_external_addr(name: str) -> str:
 
 def _default_external_addr_csv() -> str:
     return ",".join(f"{name}={_default_external_addr(name)}" for name in NODE_NAMES)
+
+
+def _lb_node_bootstrap(namespace: str) -> str:
+    """LB_BOOTSTRAP entries routing each node's external port → internal ClusterIP gRPC.
+
+    External tools (e.g. guardianctl) dial individual node addresses that the MonoFS
+    router advertises when useExternalAddresses=true.  Those addresses resolve to
+    172.21.63.46:9002-9006 which lb-edge listens on and forwards in-cluster.
+    """
+    entries = []
+    for name in NODE_NAMES:
+        port = _node_external_port(name)
+        internal = f"{name}.{namespace}.svc.cluster.local:9000"
+        entries.append(f"{name}@grpc[MonoFS {name} gRPC]:{port}={internal}")
+    return ";".join(entries)
+
+
+def _lb_node_ports_yaml() -> str:
+    """YAML port entries added to the monofs-external Service for each node port."""
+    lines = []
+    for name in NODE_NAMES:
+        port = _node_external_port(name)
+        lines.append(
+            f"    - name: {name}-grpc\n"
+            f"      port: {port}\n"
+            f"      targetPort: {port}"
+        )
+    return "\n".join(lines)
+
+
+def _lb_node_container_ports_yaml() -> str:
+    """containerPort entries for the lb-edge Deployment for each node port."""
+    lines = []
+    for name in NODE_NAMES:
+        port = _node_external_port(name)
+        lines.append(f"            - containerPort: {port}")
+    return "\n".join(lines)
+
+
+def _lb_user_service_ports_yaml() -> str:
+    """YAML port entries for user-facing services registered via lb-k8s-agent."""
+    lines = []
+    for port in LB_USER_SERVICE_PORTS:
+        lines.append(
+            f"    - name: user-svc-{port}\n"
+            f"      port: {port}\n"
+            f"      targetPort: {port}"
+        )
+    return "\n".join(lines)
+
+
+def _lb_user_service_container_ports_yaml() -> str:
+    """containerPort entries for the lb-edge Deployment for user service ports."""
+    return "\n".join(f"            - containerPort: {p}" for p in LB_USER_SERVICE_PORTS)
 
 
 def _internal_node_addr(name: str) -> str:
@@ -451,6 +514,16 @@ def _vars() -> dict:
         "GUARDIAN_UI_PORT": os.environ.get("GUARDIAN_UI_PORT", "8090"),
         # lb-edge dedicated namespace
         "LB_NAMESPACE": LB_NAMESPACE,
+        # lb-edge node bootstrap: node-X frontend ports forwarded to cluster-internal gRPC.
+        # External tools (guardianctl) dial 172.21.63.46:9002-9006; lb-edge proxies them
+        # to node-X.monofs.svc.cluster.local:9000.  Internal services use ClusterIP directly.
+        "LB_NODE_BOOTSTRAP": _lb_node_bootstrap(NAMESPACE),
+        "LB_NODE_PORTS_SPEC": _lb_node_ports_yaml(),
+        "LB_NODE_CONTAINER_PORTS": _lb_node_container_ports_yaml(),
+        # User-facing service ports registered dynamically by lb-k8s-agent
+        # (agent frontend, vscode, etc.). Must be in K8s Service and port-forward.
+        "LB_USER_SERVICE_PORTS_SPEC": _lb_user_service_ports_yaml(),
+        "LB_USER_SERVICE_CONTAINER_PORTS": _lb_user_service_container_ports_yaml(),
     }
 
 
@@ -557,6 +630,8 @@ def _local_port_forward_command() -> list[str]:
             f"{GUARDIAN_LOCAL_UI_PORT}:8090",
             f"{LB_LOCAL_ADMIN_PORT}:18081",
         ]
+        + [f"{_node_external_port(n)}:{_node_external_port(n)}" for n in NODE_NAMES]
+        + [f"{p}:{p}" for p in LB_USER_SERVICE_PORTS]
     )
     return command
 
@@ -755,6 +830,7 @@ def _apply_manifests(dry_run: bool) -> None:
         _apply(_render("deploy-router.yaml", _router_vars(s)), dry_run)
     _apply(_render("ns-lb-edge.yaml"), dry_run)
     _apply(_render("rbac-lb-agent.yaml"), dry_run)
+    _apply(_render("deploy-lb-k8s-agent.yaml"), dry_run)
     _apply(_render("deploy-haproxy.yaml"), dry_run)
     _apply(_render("svc-minio.yaml"), dry_run)
     for s in ("a", "b"):
@@ -769,6 +845,14 @@ def _apply_manifests(dry_run: bool) -> None:
 
 def _wait_lb_edge_rollout(dry_run: bool) -> None:
     _wait_rollout("monofs-haproxy", dry_run, LB_NAMESPACE)
+    # lb-k8s-agent holds in-memory registry state. After haproxy restarts the
+    # registry is empty, so restart the agent to trigger a full endpoint re-sync.
+    run(
+        ["kubectl", "-n", LB_NAMESPACE, "rollout", "restart", "deployment/lb-k8s-agent"],
+        check=False,
+        dry_run=dry_run,
+    )
+    _wait_rollout("lb-k8s-agent", dry_run, LB_NAMESPACE)
 
 
 def deploy(dry_run: bool) -> None:

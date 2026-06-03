@@ -23,3 +23,5 @@ spec:
     - name: registry-grpc
       port: 15051
       targetPort: 15051
+${LB_NODE_PORTS_SPEC}
+${LB_USER_SERVICE_PORTS_SPEC}

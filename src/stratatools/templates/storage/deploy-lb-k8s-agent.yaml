@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lb-k8s-agent
+  namespace: ${LB_NAMESPACE}
+  labels:
+    app: lb-k8s-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lb-k8s-agent
+  template:
+    metadata:
+      labels:
+        app: lb-k8s-agent
+    spec:
+      serviceAccountName: lb-k8s-agent
+      containers:
+        - name: lb-k8s-agent
+          image: ${MONOFS_LB_IMAGE}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/local/bin/lb-k8s-agent
+          args:
+            - -registry-addr
+            - monofs-external.${LB_NAMESPACE}.svc.cluster.local:15051
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
