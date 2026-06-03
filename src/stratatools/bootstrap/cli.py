@@ -257,7 +257,6 @@ def deploy(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     guardian.load_images(dry_run)
     storage.deploy(dry_run)
     guardian.deploy(dry_run)
-    guardian.stamp_urls(dry_run)
     _install_prereqs(dry_run)
 
 
@@ -275,7 +274,6 @@ def rollout(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     guardian.load_images(dry_run)
     storage.rollout(dry_run)
     guardian.rollout(dry_run)
-    guardian.stamp_urls(dry_run)
 
 
 @app.command()

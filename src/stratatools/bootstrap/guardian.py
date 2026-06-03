@@ -1,6 +1,7 @@
 """Phase 2: Guardian control plane bootstrap."""
 from __future__ import annotations
 import base64
+import concurrent.futures
 import os
 import secrets
 import subprocess
@@ -296,24 +297,31 @@ def _apply_manifests(dry_run: bool) -> None:
 
 
 def _wait_rollouts(dry_run: bool) -> None:
-    for d in _DEPLOYS:
+    if dry_run:
+        for d in _DEPLOYS:
+            run(
+                ["kubectl", "-n", NAMESPACE, "rollout", "status", f"deployment/{d}", "--timeout=120s"],
+                check=False,
+                dry_run=True,
+            )
+        return
+
+    def _wait_one(d: str) -> None:
         run(
-            [
-                "kubectl",
-                "-n",
-                NAMESPACE,
-                "rollout",
-                "status",
-                f"deployment/{d}",
-                "--timeout=120s",
-            ],
+            ["kubectl", "-n", NAMESPACE, "rollout", "status", f"deployment/{d}", "--timeout=120s"],
             check=False,
-            dry_run=dry_run,
+            dry_run=False,
         )
+
+    with concurrent.futures.ThreadPoolExecutor() as ex:
+        list(ex.map(_wait_one, _DEPLOYS))
 
 
 def deploy(dry_run: bool) -> None:
     _apply_manifests(dry_run)
+    # Stamp URLs (incl. GUARDIAN_MONOFS_CLIENT_API_ENDPOINT) before waiting so
+    # guardiand only restarts once instead of twice.
+    stamp_urls(dry_run)
     _wait_rollouts(dry_run)
 
 
@@ -324,6 +332,7 @@ def rollout(dry_run: bool) -> None:
         check=False,
         dry_run=dry_run,
     )
+    stamp_urls(dry_run)
     _wait_rollouts(dry_run)
 
 
