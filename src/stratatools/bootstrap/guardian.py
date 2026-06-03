@@ -199,7 +199,7 @@ def _guardian_monofs_client_api_endpoint() -> str:
     if ".svc.cluster.local" not in GUARDIAN_MONOFS_ROUTER:
         return GUARDIAN_MONOFS_ROUTER
     endpoint = _resolve_service_external_endpoint(
-        STORAGE_NAMESPACE, "monofs-external", "grpc", "9090"
+        LB_NAMESPACE, "monofs-external", "grpc", "9090"
     )
     return endpoint or GUARDIAN_MONOFS_ROUTER
 
