@@ -727,7 +727,6 @@ def deploy(dry_run: bool) -> None:
     _wait_rollouts(dry_run)
     _wait_lb_edge_rollout(dry_run)
     _reconfigure_router_external_addresses(dry_run)
-    ensure_local_port_forward(dry_run)
 
 
 def _wait_rollouts(dry_run: bool, deployments: list[str] | None = None) -> None:
@@ -772,7 +771,6 @@ def rollout(dry_run: bool) -> None:
     _wait_rollouts(dry_run)
     _wait_lb_edge_rollout(dry_run)
     _reconfigure_router_external_addresses(dry_run)
-    ensure_local_port_forward(dry_run)
 
 
 def stop(dry_run: bool) -> None:
