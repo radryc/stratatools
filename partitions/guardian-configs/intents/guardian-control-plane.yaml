@@ -12,7 +12,7 @@ spec:
   assets:
   - type: Compute
     name: guardian-control-plane
-    version: 20260526-1225
+    version: 20260603-1035
     properties:
       env:
         GUARDIAN_CLIENT_DISCOVERY_TOKEN: guardian-dev-token
@@ -33,7 +33,7 @@ spec:
         GUARDIAN_RECONCILE_INTERVAL: 5m
         GUARDIAN_UI_BASE_URL: http://127.0.0.1:8090
         GUARDIAN_UI_LISTEN: :8090
-      image: guardian:sha256-e8f980c526ea41e2
+      image: guardian:sha256-8dfd3dbbf399643f
       imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 8090
@@ -49,7 +49,7 @@ spec:
           memory: 256Mi
   - type: LoadBalancer
     name: guardian-ui
-    version: 20260526-1225
+    version: 20260603-1035
     dependsOn:
     - guardian-control-plane
     properties:
@@ -61,7 +61,7 @@ spec:
       - guardian-control-plane
   - type: Compute
     name: guardian-kubernetes-pusher
-    version: 20260526-1225
+    version: 20260603-1035
     dependsOn:
     - guardian-control-plane
     properties:
@@ -75,7 +75,7 @@ spec:
         GUARDIAN_OTEL_METRIC_INTERVAL: 15s
         GUARDIAN_OTEL_SERVICE_NAME: guardian-pusher-k8s
         GUARDIAN_PUSHER_NAME: k8s-main
-      image: guardian-pusher-k8s:sha256-f69ee79cf9b9a6f1
+      image: guardian-pusher-k8s:sha256-f215e6b510f9042b
       imagePullPolicy: IfNotPresent
       resources:
         limits:

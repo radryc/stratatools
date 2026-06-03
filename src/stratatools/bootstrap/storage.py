@@ -218,8 +218,19 @@ def _first_node_address() -> str:
 
 
 def _host_reachable_node_address() -> str:
+    override = os.environ.get("MONOFS_NODE_HOST", "").strip()
+    if override:
+        return override
     host = _first_node_address()
     if _is_docker_internal_ip(host):
+        # On WSL2 the Docker bridge network is directly reachable from the host;
+        # on Mac/Windows Docker Desktop it is not (use 127.0.0.1 + NodePort).
+        # Probe the kube API server to decide.
+        try:
+            with socket.create_connection((host, 6443), timeout=1):
+                return host
+        except OSError:
+            pass
         return "127.0.0.1"
     return host
 

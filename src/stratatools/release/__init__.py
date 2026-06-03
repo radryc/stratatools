@@ -64,9 +64,21 @@ def _apply_k8s_top_prereq(dry_run: bool) -> None:
     run(["kubectl", "apply", "-f", str(f)], check=False, dry_run=dry_run)
 
 
+def _gctl_root_flags() -> list[str]:
+    """Return guardian-url + discovery-token flags for guardianctl."""
+    url = bootstrap_guardian.guardian_ui_url()
+    token = bootstrap_guardian.client_discovery_token()
+    flags = []
+    if url:
+        flags += ["--guardian-url", url]
+    if token:
+        flags += ["--guardian-discovery-token", token]
+    return flags
+
+
 def _gctl(args: list[str], dry_run: bool):
     """Run guardianctl with args."""
-    return run([GUARDIANCTL, *args], check=True, dry_run=dry_run)
+    return run([GUARDIANCTL, *_gctl_root_flags(), *args], check=True, dry_run=dry_run)
 
 
 def _release_one(

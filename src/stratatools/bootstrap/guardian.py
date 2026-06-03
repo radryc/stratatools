@@ -542,6 +542,35 @@ def _lb_edge_host() -> str:
         return "127.0.0.1"
 
 
+def guardian_ui_url() -> str:
+    """Return the externally-reachable Guardian UI URL (via lb-edge)."""
+    env = os.environ.get("GUARDIAN_URL") or os.environ.get("GUARDIAN_API_URL", "")
+    if env:
+        return env
+    return f"http://{_lb_edge_host()}:{GUARDIAN_UI_PORT}"
+
+
+def client_discovery_token() -> str:
+    """Read the client discovery token from the running guardian-secrets secret."""
+    env = (
+        os.environ.get("GUARDIAN_DISCOVERY_TOKEN")
+        or os.environ.get("GUARDIAN_CLIENT_DISCOVERY_TOKEN", "")
+    )
+    if env:
+        return env
+    r = subprocess.run(
+        [
+            "kubectl", "-n", NAMESPACE, "get", "secret", "guardian-secrets",
+            "-o", "jsonpath={.data.client-discovery-token}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode == 0 and r.stdout.strip():
+        return base64.b64decode(r.stdout.strip()).decode()
+    return ""
+
+
 def stamp_urls(dry_run: bool) -> None:
     gcp = PARTITIONS / "guardian-configs" / "intents" / "guardian-control-plane.yaml"
     gcfg = PARTITIONS / "guardian-configs" / "config.yaml"
@@ -563,6 +592,17 @@ def stamp_urls(dry_run: bool) -> None:
     monofs_grpc_endpoint = f"{host}:9090"
     info(f"guardian MonoFS client API endpoint (via lb-edge): {monofs_grpc_endpoint}")
     _set_env_in_intent(gcp, "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", monofs_grpc_endpoint)
+
+    # Patch the live deployment immediately so guardianctl can connect without
+    # waiting for a full intent push/reconcile cycle.
+    run(
+        [
+            "kubectl", "-n", NAMESPACE, "set", "env", "deployment/guardiand",
+            f"GUARDIAN_MONOFS_CLIENT_API_ENDPOINT={monofs_grpc_endpoint}",
+        ],
+        check=False,
+        dry_run=False,
+    )
 
     dip = _svc_ip(NAMESPACE, "doctor-query-external")
     if dip:

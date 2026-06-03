@@ -12,25 +12,25 @@ spec:
   assets:
   - type: Volume
     name: workspace-data
-    version: 20260526-1222
+    version: 20260603-1031
     properties:
       accessMode: ReadWriteOnce
       size: 20Gi
   - type: Volume
     name: monofs-state
-    version: 20260526-1222
+    version: 20260603-1031
     properties:
       accessMode: ReadWriteOnce
       size: 10Gi
   - type: Volume
     name: monofs-cache
-    version: 20260526-1222
+    version: 20260603-1031
     properties:
       accessMode: ReadWriteOnce
       size: 10Gi
   - type: Config
     name: ssh-authorized-keys
-    version: 20260526-1222
+    version: 20260603-1031
     properties:
       data:
         authorized_keys: '# replace with your ssh public key to enable SSH access
@@ -40,7 +40,7 @@ spec:
       format: text
   - type: Compute
     name: vscode
-    version: 20260526-1222
+    version: 20260603-1031
     dependsOn:
     - workspace-data
     - monofs-state
@@ -68,7 +68,7 @@ spec:
       hostBindMounts:
       - source: /dev/fuse
         target: /dev/fuse
-      image: dev-workspace-vscode:sha256-66bfbdc2193f70e9
+      image: dev-workspace-vscode:sha256-a6ffe4c155676ba0
       imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 8888
@@ -96,7 +96,7 @@ spec:
         volume: monofs-cache
   - type: LoadBalancer
     name: vscode-edge
-    version: 20260526-1222
+    version: 20260603-1031
     dependsOn:
     - vscode
     payload:
