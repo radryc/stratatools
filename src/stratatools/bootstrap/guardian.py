@@ -81,6 +81,27 @@ def _is_docker_internal_ip(host: str) -> bool:
     )
 
 
+def _configured_external_service_ips() -> list[str]:
+    raw = (
+        os.environ.get("EXTERNAL_SERVICE_IPS", "").strip()
+        or os.environ.get("EXTERNAL_SERVICE_IP", "").strip()
+    )
+    if not raw:
+        return []
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _external_service_spec_yaml(indent: int = 2) -> str:
+    ips = _configured_external_service_ips()
+    if not ips:
+        return ""
+    prefix = " " * indent
+    nested = " " * (indent + 2)
+    lines = [f"{prefix}externalIPs:"]
+    lines.extend(f"{nested}- {ip}" for ip in ips)
+    return "\n" + "\n".join(lines)
+
+
 def _service_type(namespace: str, service_name: str) -> str:
     return _kubectl_query(
         [
@@ -91,6 +112,33 @@ def _service_type(namespace: str, service_name: str) -> str:
             service_name,
             "-o",
             "jsonpath={.spec.type}",
+        ]
+    )
+
+
+def _service_explicit_host(namespace: str, service_name: str) -> str:
+    host = _kubectl_query(
+        [
+            "-n",
+            namespace,
+            "get",
+            "service",
+            service_name,
+            "-o",
+            "jsonpath={.spec.externalIPs[0]}",
+        ]
+    )
+    if host:
+        return host
+    return _kubectl_query(
+        [
+            "-n",
+            namespace,
+            "get",
+            "service",
+            service_name,
+            "-o",
+            "jsonpath={.spec.loadBalancerIP}",
         ]
     )
 
@@ -162,6 +210,9 @@ def _first_node_address() -> str:
 def _service_external_endpoint(
     namespace: str, service_name: str, port_name: str, service_port: str
 ) -> str:
+    host = _service_explicit_host(namespace, service_name)
+    if host:
+        return f"{host}:{service_port}"
     service_type = _service_type(namespace, service_name)
     if service_type == "LoadBalancer":
         host = _service_lb_host(namespace, service_name)
@@ -215,6 +266,7 @@ def _vars() -> dict:
         "NAMESPACE": NAMESPACE,
         "STORAGE_NAMESPACE": STORAGE_NAMESPACE,
         "EXTERNAL_SERVICE_TYPE": EXTERNAL_SERVICE_TYPE,
+        "EXTERNAL_SERVICE_SPEC": _external_service_spec_yaml(),
         "GUARDIAN_IMAGE": GUARDIAN_IMAGE,
         "GUARDIAN_IMAGE_PULL_POLICY": GUARDIAN_IMAGE_PULL_POLICY,
         "GUARDIAN_PUSHER_IMAGE": GUARDIAN_PUSHER_IMAGE,
@@ -532,18 +584,36 @@ def _set_top_key(path, key: str, value: str) -> None:
 
 
 def _lb_edge_host() -> str:
-    """Return the host address at which the lb-edge port-forward is reachable.
+    """Return the host address at which lb-edge (hostNetwork) is reachable.
 
-    On WSL2 (or when MONOFS_PORT_FORWARD_ADDRESS is set to 0.0.0.0) the
-    port-forward binds all interfaces, so the eth0 LAN IP works.  Fall back
-    to 127.0.0.1 for loopback-only setups.
+    With hostNetwork:true the pod binds on the kind node's network namespace
+    (not the host's). On Linux, kind nodes are Docker containers whose IPs are
+    directly routable from the host, so we query the pod's status.hostIP.
+    An explicit MONOFS_PORT_FORWARD_ADDRESS override still works.
     """
     configured = os.environ.get("MONOFS_PORT_FORWARD_ADDRESS", "").strip()
     if configured and configured != "0.0.0.0":
         return configured
-    # Detect the primary non-loopback IPv4 address.
+    configured_ips = _configured_external_service_ips()
+    if configured_ips:
+        return configured_ips[0]
+    # Query the node IP where the lb-edge pod is actually running.
+    import subprocess as _sp
+    r = _sp.run(
+        [
+            "kubectl", "-n", LB_NAMESPACE, "get", "pod",
+            "-l", "app=monofs-haproxy",
+            "-o", "jsonpath={.items[0].status.hostIP}",
+        ],
+        capture_output=True, text=True,
+    )
+    node_ip = r.stdout.strip()
+    if r.returncode == 0 and node_ip:
+        return node_ip
+    # Fallback: primary non-loopback IPv4.
     try:
-        s = __import__("socket").socket(__import__("socket").AF_INET, __import__("socket").SOCK_DGRAM)
+        import socket as _socket
+        s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()

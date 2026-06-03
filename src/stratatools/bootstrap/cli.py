@@ -77,8 +77,9 @@ def _load_bootstrap_env() -> None:
 
 
 def _reload_bootstrap_modules() -> None:
-    # guardian computes runtime defaults (including AWS pusher toggles) at import time.
+    # Bootstrap modules compute runtime defaults at import time.
     # Reload after loading bootstrap.local.env so command execution picks up overrides.
+    importlib.reload(storage)
     importlib.reload(guardian)
 
 

@@ -118,12 +118,19 @@ What each step does:
    stamps the current Guardian UI and host-reachable MonoFS client endpoint
    into the checked-in partition config for later releases.
 
-On WSL2, that managed MonoFS port-forward binds `0.0.0.0` by default so the
-Windows host can also use `http://localhost:8080/` and `localhost:9090`.
+That managed MonoFS port-forward binds `0.0.0.0` by default so both
+`http://localhost:8080/` and `http://<host-ip>:8080/` work from the host.
+On WSL2 this also makes the Windows host reach the same forwarded ports.
 Override it with `MONOFS_PORT_FORWARD_ADDRESS=127.0.0.1` in
 `bootstrap.local.env` if you want loopback-only exposure. If Windows localhost
 forwarding is still flaky, enable mirrored networking in `%UserProfile%\\.wslconfig`
 and restart WSL with `wsl --shutdown`.
+
+If your cluster does not have a LoadBalancer controller, set
+`EXTERNAL_SERVICE_IP=172.21.63.46` (or `EXTERNAL_SERVICE_IPS=...`) in
+`bootstrap.local.env` before `st-bootstrap deploy` / `rollout`. Bootstrap will
+publish that address on the bootstrap Services and use it when stamping
+host-reachable URLs.
 3. `uv run st-release --all --bump --wait`
    Builds local partition images where needed, distributes them, stamps image
    references into the partition YAML, pushes the partitions with

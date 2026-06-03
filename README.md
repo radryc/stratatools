@@ -141,6 +141,7 @@ command. Common overrides:
 |---|---|
 | `GUARDIAN_AWS_ACCOUNT` | Enable AWS pusher deployment (opt-in) |
 | `MONOFS_PORT_FORWARD_ADDRESS` | Bind address for the managed port-forward (default: `0.0.0.0`; set to `127.0.0.1` for loopback-only) |
+| `EXTERNAL_SERVICE_IP` / `EXTERNAL_SERVICE_IPS` | Publish bootstrap Services on one or more explicit host IPs when no LoadBalancer controller is available |
 | `GUARDIAN_UI_PORT` | Guardian UI port (default: `8090`) |
 | `EXTERNAL_SERVICE_TYPE` | Kubernetes service type for external services (default: `LoadBalancer`) |
 
@@ -185,6 +186,12 @@ WSL2 `eth0`):
 `guardian-configs` and `doctor` partition configs so `guardianctl` and
 in-cluster services resolve the correct endpoint without further manual
 configuration.
+
+If your cluster has no LoadBalancer controller, set `EXTERNAL_SERVICE_IP` (or
+`EXTERNAL_SERVICE_IPS`) in `bootstrap.local.env` to an existing host IP like
+`172.21.63.46`. Bootstrap will render that address into the external Services
+so `kubectl get svc` shows it in `EXTERNAL-IP`, and stamped URLs will prefer it
+over NodePorts.
 
 To override the bind address set `MONOFS_PORT_FORWARD_ADDRESS` in
 `bootstrap.local.env` (e.g. `127.0.0.1` for loopback-only).

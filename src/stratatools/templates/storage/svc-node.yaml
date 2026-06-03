@@ -25,7 +25,7 @@ metadata:
   name: node-${SUFFIX}-external
   namespace: ${NAMESPACE}
 spec:
-  type: ${EXTERNAL_SERVICE_TYPE}
+  type: ${EXTERNAL_SERVICE_TYPE}${EXTERNAL_SERVICE_SPEC}
   selector:
     app: monofs-server
     component: node-${SUFFIX}

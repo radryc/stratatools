@@ -13,20 +13,43 @@ from stratatools.bootstrap import storage
 
 
 class BootstrapPortForwardTests(unittest.TestCase):
-    def test_local_port_forward_command_uses_expected_ports(self) -> None:
-        with mock.patch.object(storage, "_is_wsl", return_value=False), mock.patch.dict(
-            storage.os.environ, {}, clear=False
+    def test_local_port_forward_command_binds_all_interfaces_by_default(self) -> None:
+        with mock.patch.dict(storage.os.environ, {}, clear=False):
+            self.assertEqual(
+                storage._local_port_forward_command(),
+                [
+                    "kubectl",
+                    "-n",
+                    storage.LB_NAMESPACE,
+                    "port-forward",
+                    "--address",
+                    "0.0.0.0",
+                    "svc/monofs-external",
+                    f"{storage.MONOFS_LOCAL_HTTP_PORT}:8080",
+                    f"{storage.MONOFS_LOCAL_GRPC_PORT}:9090",
+                    f"{storage.GUARDIAN_LOCAL_UI_PORT}:8090",
+                    f"{storage.LB_LOCAL_ADMIN_PORT}:18081",
+                ],
+            )
+
+    def test_local_port_forward_command_honors_loopback_override(self) -> None:
+        with mock.patch.dict(
+            storage.os.environ, {"MONOFS_PORT_FORWARD_ADDRESS": "127.0.0.1"}, clear=False
         ):
             self.assertEqual(
                 storage._local_port_forward_command(),
                 [
                     "kubectl",
                     "-n",
-                    storage.NAMESPACE,
+                    storage.LB_NAMESPACE,
                     "port-forward",
+                    "--address",
+                    "127.0.0.1",
                     "svc/monofs-external",
                     f"{storage.MONOFS_LOCAL_HTTP_PORT}:8080",
                     f"{storage.MONOFS_LOCAL_GRPC_PORT}:9090",
+                    f"{storage.GUARDIAN_LOCAL_UI_PORT}:8090",
+                    f"{storage.LB_LOCAL_ADMIN_PORT}:18081",
                 ],
             )
 
@@ -39,13 +62,15 @@ class BootstrapPortForwardTests(unittest.TestCase):
                 [
                     "kubectl",
                     "-n",
-                    storage.NAMESPACE,
+                    storage.LB_NAMESPACE,
                     "port-forward",
                     "--address",
                     "0.0.0.0",
                     "svc/monofs-external",
                     f"{storage.MONOFS_LOCAL_HTTP_PORT}:8080",
                     f"{storage.MONOFS_LOCAL_GRPC_PORT}:9090",
+                    f"{storage.GUARDIAN_LOCAL_UI_PORT}:8090",
+                    f"{storage.LB_LOCAL_ADMIN_PORT}:18081",
                 ],
             )
 
@@ -79,13 +104,15 @@ class BootstrapPortForwardTests(unittest.TestCase):
             desired_command = [
                 "kubectl",
                 "-n",
-                storage.NAMESPACE,
+                storage.LB_NAMESPACE,
                 "port-forward",
                 "--address",
                 "0.0.0.0",
                 "svc/monofs-external",
                 f"{storage.MONOFS_LOCAL_HTTP_PORT}:8080",
                 f"{storage.MONOFS_LOCAL_GRPC_PORT}:9090",
+                f"{storage.GUARDIAN_LOCAL_UI_PORT}:8090",
+                f"{storage.LB_LOCAL_ADMIN_PORT}:18081",
             ]
 
             proc = mock.Mock()

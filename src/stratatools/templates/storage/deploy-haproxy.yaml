@@ -16,6 +16,7 @@ spec:
         app: monofs-haproxy
     spec:
       hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: lb-edge
           image: ${MONOFS_LB_IMAGE}

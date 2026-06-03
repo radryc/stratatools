@@ -4,7 +4,7 @@ metadata:
   name: monofs-external
   namespace: ${LB_NAMESPACE}
 spec:
-  type: ${EXTERNAL_SERVICE_TYPE}
+  type: ${EXTERNAL_SERVICE_TYPE}${EXTERNAL_SERVICE_SPEC}
   selector:
     app: monofs-haproxy
   ports:

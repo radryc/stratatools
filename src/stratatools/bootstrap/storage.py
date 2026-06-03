@@ -147,9 +147,57 @@ def _is_docker_internal_ip(host: str) -> bool:
     )
 
 
+def _configured_external_service_ips() -> list[str]:
+    raw = (
+        os.environ.get("EXTERNAL_SERVICE_IPS", "").strip()
+        or os.environ.get("EXTERNAL_SERVICE_IP", "").strip()
+    )
+    if not raw:
+        return []
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _external_service_spec_yaml(indent: int = 2) -> str:
+    ips = _configured_external_service_ips()
+    if not ips:
+        return ""
+    prefix = " " * indent
+    nested = " " * (indent + 2)
+    lines = [f"{prefix}externalIPs:"]
+    lines.extend(f"{nested}- {ip}" for ip in ips)
+    return "\n" + "\n".join(lines)
+
+
 def _service_type(service_name: str) -> str:
     return _kubectl_query(
         ["-n", NAMESPACE, "get", "service", service_name, "-o", "jsonpath={.spec.type}"]
+    )
+
+
+def _service_explicit_host(service_name: str) -> str:
+    host = _kubectl_query(
+        [
+            "-n",
+            NAMESPACE,
+            "get",
+            "service",
+            service_name,
+            "-o",
+            "jsonpath={.spec.externalIPs[0]}",
+        ]
+    )
+    if host:
+        return host
+    return _kubectl_query(
+        [
+            "-n",
+            NAMESPACE,
+            "get",
+            "service",
+            service_name,
+            "-o",
+            "jsonpath={.spec.loadBalancerIP}",
+        ]
     )
 
 
@@ -236,6 +284,9 @@ def _host_reachable_node_address() -> str:
 
 
 def _service_external_endpoint(service_name: str, service_port: str) -> str:
+    host = _service_explicit_host(service_name)
+    if host:
+        return f"{host}:{service_port}"
     service_type = _service_type(service_name)
     if service_type == "LoadBalancer":
         host = _service_lb_host(service_name)
@@ -371,6 +422,7 @@ def _vars() -> dict:
     return {
         "NAMESPACE": NAMESPACE,
         "EXTERNAL_SERVICE_TYPE": EXTERNAL_SERVICE_TYPE,
+        "EXTERNAL_SERVICE_SPEC": _external_service_spec_yaml(),
         "MONOFS_CLUSTER_ID": MONOFS_CLUSTER_ID,
         "MINIO_PVC_SIZE": MINIO_PVC_SIZE,
         "FETCHER_PVC_SIZE": FETCHER_PVC_SIZE,
@@ -470,9 +522,7 @@ def _local_port_forward_address() -> str:
     configured = os.environ.get("MONOFS_PORT_FORWARD_ADDRESS", "").strip()
     if configured:
         return configured
-    if _is_wsl():
-        return "0.0.0.0"
-    return ""
+    return "0.0.0.0"
 
 
 def _legacy_local_port_forward_command() -> list[str]:
