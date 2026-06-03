@@ -19,6 +19,7 @@ spec:
       containers:
         - name: pusher
           image: ${GUARDIAN_PUSHER_AWS_IMAGE}
+          imagePullPolicy: ${GUARDIAN_IMAGE_PULL_POLICY}
           env:
             - name: GUARDIAN_PUSHER_NAME
               value: "${GUARDIAN_AWS_PUSHER_NAME}"
@@ -28,6 +29,8 @@ spec:
               value: "${GUARDIAN_AWS_REGION}"
             - name: GUARDIAN_ASSUME_ROLE_NAME
               value: "${GUARDIAN_AWS_ASSUME_ROLE_NAME}"
+            - name: GUARDIAN_LB_IMAGE
+              value: "${GUARDIAN_LB_IMAGE}"
             - name: GUARDIAN_MONOFS_ROUTER
               value: "${GUARDIAN_MONOFS_ROUTER}"
             - name: GUARDIAN_MONOFS_TOKEN

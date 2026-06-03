@@ -21,6 +21,7 @@ spec:
       containers:
         - name: router
           image: ${MONOFS_ROUTER_IMAGE}
+          imagePullPolicy: ${MONOFS_IMAGE_PULL_POLICY}
           args:
             - --port=9090
             - --http-port=8080

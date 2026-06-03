@@ -10,7 +10,6 @@ from typing import Optional
 
 import typer
 
-from stratatools.bootstrap import devdns as bootstrap_devdns
 from stratatools.bootstrap import guardian as bootstrap_guardian
 from stratatools.util import PARTITIONS, die, info, run, warn
 from stratatools.image import cmd_build, cmd_push, cmd_stamp, is_immutable_image_ref, planned_stamp_changes
@@ -169,7 +168,4 @@ def main(
             wait=wait,
             dry_run=dry_run,
         )
-    bootstrap_devdns.sync_routes(parts, dry_run=dry_run, ensure_running=False)
-    if dry_run or bootstrap_devdns.has_active_daemon():
-        bootstrap_guardian.stamp_urls(dry_run)
     info(f"release complete: {parts}")

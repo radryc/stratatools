@@ -15,4 +15,4 @@ spec:
     topology: kubernetes
     managedBy: guardian
     endpoint: http://127.0.0.1:8090
-guardian_ui_base_url: http://172.18.0.14:8090
+guardian_ui_base_url: http://172.21.63.46:8090

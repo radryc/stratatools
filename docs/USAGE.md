@@ -56,16 +56,18 @@ You need these host tools:
 - `make`
 - `uv` recommended
 
-You also need a reachable Kubernetes cluster before `st-setup` and
-`st-bootstrap deploy` can succeed. Supported local options are:
+You need a reachable Kubernetes cluster before `st-bootstrap deploy` can
+succeed. If `st-setup` does not find one, it auto-creates or reuses a local
+`kind` cluster named `strata` with three workers by default. Supported local
+options are:
 
 - Docker Desktop Kubernetes
 - `kind`
 - `minikube`
 - a remote cluster via `KUBECONFIG`
 
-`st-setup` validates the toolchain and cluster and prints install hints when
-something is missing.
+`st-setup` validates the toolchain, provisions `kind` when needed, and prints
+install hints when something is missing.
 
 ## Fresh Checkout
 
@@ -89,7 +91,8 @@ pip install -e .
 ## Full Bring-Up
 
 This is the shortest end-to-end flow for a fresh machine that already has the
-host prerequisites and a running Kubernetes cluster:
+host prerequisites. `st-setup` will create a local `kind` cluster if none is
+reachable:
 
 ```bash
 uv run st-setup
@@ -102,20 +105,25 @@ What each step does:
 1. `uv run st-setup`
    Clones the sibling repositories beside `stratatools` if they do not already
    exist, ensures `../monofs/.env` contains a shared
-   `MONOFS_ENCRYPTION_KEY`, then verifies Docker, kubectl, Go, Python, and
-   cluster reachability.
+   `MONOFS_ENCRYPTION_KEY`, verifies Docker, kubectl, Go, Python, and cluster
+   reachability, then creates or reuses a local `kind` cluster named `strata`
+   with three workers if no cluster is reachable yet.
 2. `uv run st-bootstrap deploy`
    Builds `guardianctl`, `monofs-client`, `monofs-session`, and
    `monofs-search` into `~/bin`, deploys bootstrap MonoFS storage, deploys
    bootstrap Guardian, installs `metrics-server`, and applies the bootstrap
    RBAC manifests used by OpenTelemetry, `k8s-top`, and the dev workspace,
-   reusing the same `MONOFS_ENCRYPTION_KEY` from `../monofs/.env`, then stamps
-   the current Guardian UI and host-reachable MonoFS client endpoint into the
-   checked-in partition config for later releases.
+   reusing the same `MONOFS_ENCRYPTION_KEY` from `../monofs/.env`, keeps
+   `monofs-external` forwarded to `localhost:8080` and `localhost:9090`, then
+   stamps the current Guardian UI and host-reachable MonoFS client endpoint
+   into the checked-in partition config for later releases.
 
-   Add `--dns` when you also want bootstrap to build `devdns`/`devdnsctl`,
-   start local devdns, and keep declared `DevDNSRoute` assets synced through
-   local `kubectl port-forward` processes.
+On WSL2, that managed MonoFS port-forward binds `0.0.0.0` by default so the
+Windows host can also use `http://localhost:8080/` and `localhost:9090`.
+Override it with `MONOFS_PORT_FORWARD_ADDRESS=127.0.0.1` in
+`bootstrap.local.env` if you want loopback-only exposure. If Windows localhost
+forwarding is still flaky, enable mirrored networking in `%UserProfile%\\.wslconfig`
+and restart WSL with `wsl --shutdown`.
 3. `uv run st-release --all --bump --wait`
    Builds local partition images where needed, distributes them, stamps image
    references into the partition YAML, pushes the partitions with
@@ -126,15 +134,6 @@ access points are:
 
 - OpenVSCode: `http://localhost:8888/`
 - SSH: `ssh developer@localhost -p 2222`
-
-When the Doctor partition is released and local devdns is active, the intended
-browser entry point is:
-
-- Doctor query UI: `http://doctor.strata/`
-
-For LAN-wide wildcard `.strata` DNS, run devdns on one reachable host, set
-`DEVDNS_SERVER_IP` to that host LAN IP, set `DEVDNS_DNS_ADDR=0.0.0.0:53`, and
-point your router or clients at that host as their DNS server.
 
 SSH access also requires the `ssh-authorized-keys` config in the
 `dev-workspace` partition to contain your public key.
@@ -216,22 +215,10 @@ Rebuild bootstrap binaries and images without deploying:
 uv run st-bootstrap build
 ```
 
-Build bootstrap binaries/images and the local devdns binaries:
-
-```bash
-uv run st-bootstrap build --dns
-```
-
 Rebuild bootstrap images and restart the bootstrap workloads:
 
 ```bash
 uv run st-bootstrap rollout
-```
-
-Restart bootstrap workloads and resync local devdns routes:
-
-```bash
-uv run st-bootstrap rollout --dns
 ```
 
 Release a single partition:

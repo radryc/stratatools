@@ -23,6 +23,7 @@ spec:
       containers:
         - name: fetcher
           image: ${MONOFS_FETCHER_IMAGE}
+          imagePullPolicy: ${MONOFS_IMAGE_PULL_POLICY}
           args:
             - --port=9200
             - --cache-dir=/data/cache

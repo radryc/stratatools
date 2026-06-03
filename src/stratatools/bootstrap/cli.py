@@ -13,7 +13,7 @@ import typer
 
 from stratatools.monofs_key import ensure_monofs_encryption_key
 from stratatools.util import PARTITIONS, ROOT, die, info, run, warn
-from . import devdns, storage, guardian
+from . import storage, guardian
 
 app = typer.Typer(
     no_args_is_help=False,
@@ -39,13 +39,6 @@ LOCAL_BIN_BUILD_TARGETS = [
     ("monofs-session", MONOFS_REPO_DIR, "./cmd/monofs-session"),
     ("monofs-search", MONOFS_REPO_DIR, "./cmd/monofs-search"),
 ]
-
-
-def _local_bin_build_targets(enable_dns: bool) -> list[tuple[str, Path, str]]:
-    targets = list(LOCAL_BIN_BUILD_TARGETS)
-    if enable_dns:
-        targets.extend(devdns.local_bin_targets())
-    return targets
 
 
 def _load_bootstrap_env() -> None:
@@ -184,12 +177,12 @@ def _path_contains(path: Path) -> bool:
     return False
 
 
-def _install_local_bins(dry_run: bool, *, enable_dns: bool) -> None:
-    for _name, repo_dir, _target in _local_bin_build_targets(enable_dns):
+def _install_local_bins(dry_run: bool) -> None:
+    for _name, repo_dir, _target in LOCAL_BIN_BUILD_TARGETS:
         if not repo_dir.is_dir():
             die(
                 f"required repo not found: {repo_dir}. "
-                "Run `st-setup` first or set GUARDIAN_REPO_DIR / MONOFS_REPO_DIR / DEVDNS_REPO_DIR."
+                "Run `st-setup` first or set GUARDIAN_REPO_DIR / MONOFS_REPO_DIR."
             )
 
     info(f"=== building local CLIs into {LOCAL_BIN_DIR} ===")
@@ -197,7 +190,7 @@ def _install_local_bins(dry_run: bool, *, enable_dns: bool) -> None:
     if not dry_run:
         LOCAL_BIN_DIR.mkdir(parents=True, exist_ok=True)
 
-    for name, repo_dir, target in _local_bin_build_targets(enable_dns):
+    for name, repo_dir, target in LOCAL_BIN_BUILD_TARGETS:
         run(
             ["go", "build", "-o", str(LOCAL_BIN_DIR / name), target],
             cwd=repo_dir,
@@ -240,94 +233,68 @@ def _install_prereqs(dry_run: bool) -> None:
 
 
 @app.command()
-def build(
-	dry_run: bool = typer.Option(False, "--dry-run"),
-	dns: bool = typer.Option(False, "--dns", help="Build devdns binaries alongside the normal bootstrap CLIs."),
-) -> None:
+def build(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Build local CLIs plus MonoFS + Guardian images."""
     _load_bootstrap_env()
     _reload_bootstrap_modules()
     guardian.sync_local_aws_intent(dry_run)
-    _install_local_bins(dry_run, enable_dns=dns)
+    _install_local_bins(dry_run)
     storage.build_images(dry_run)
     guardian.build_images(dry_run)
 
 
 @app.command()
-def deploy(
-	dry_run: bool = typer.Option(False, "--dry-run"),
-	dns: bool = typer.Option(False, "--dns", help="Start local devdns and sync declared DevDNSRoute assets after bootstrap deployment."),
-) -> None:
+def deploy(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Build local CLIs and bootstrap images, then deploy storage + Guardian."""
     _load_bootstrap_env()
     _reload_bootstrap_modules()
     guardian.sync_local_aws_intent(dry_run)
-    _install_local_bins(dry_run, enable_dns=dns)
+    _install_local_bins(dry_run)
     _ensure_bootstrap_secrets(dry_run)
     storage.build_images(dry_run)
     guardian.build_images(dry_run)
+    storage.load_images(dry_run)
+    guardian.load_images(dry_run)
     storage.deploy(dry_run)
     guardian.deploy(dry_run)
     guardian.stamp_urls(dry_run)
     _install_prereqs(dry_run)
-    if dns:
-        devdns.sync_routes(None, dry_run=dry_run, ensure_running=True)
-        guardian.stamp_urls(dry_run)
 
 
 @app.command()
-def rollout(
-	dry_run: bool = typer.Option(False, "--dry-run"),
-	dns: bool = typer.Option(False, "--dns", help="Restart bootstrap workloads and resync declared DevDNSRoute assets locally."),
-) -> None:
+def rollout(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Build local CLIs, rebuild images, and restart deployments."""
     _load_bootstrap_env()
     _reload_bootstrap_modules()
     guardian.sync_local_aws_intent(dry_run)
-    _install_local_bins(dry_run, enable_dns=dns)
+    _install_local_bins(dry_run)
     _ensure_bootstrap_secrets(dry_run)
     storage.build_images(dry_run)
     guardian.build_images(dry_run)
+    storage.load_images(dry_run)
+    guardian.load_images(dry_run)
     storage.rollout(dry_run)
     guardian.rollout(dry_run)
     guardian.stamp_urls(dry_run)
-    if dns:
-        devdns.sync_routes(None, dry_run=dry_run, ensure_running=True)
-        guardian.stamp_urls(dry_run)
 
 
 @app.command()
-def stop(
-	dry_run: bool = typer.Option(False, "--dry-run"),
-	dns: bool = typer.Option(False, "--dns", help="Also stop locally managed devdns and DevDNSRoute forwarders."),
-) -> None:
+def stop(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Scale deployments to 0 (Guardian first, then storage)."""
     guardian.stop(dry_run)
     storage.stop(dry_run)
-    if dns:
-        devdns.stop(dry_run)
 
 
 @app.command()
-def destroy(
-	dry_run: bool = typer.Option(False, "--dry-run"),
-	dns: bool = typer.Option(False, "--dns", help="Also stop locally managed devdns and DevDNSRoute forwarders."),
-) -> None:
+def destroy(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Delete Guardian + storage namespaces."""
     guardian.destroy(dry_run)
     storage.destroy(dry_run)
-    if dns:
-        devdns.stop(dry_run)
 
 
 @app.command("stamp-urls")
-def stamp_urls(
-	dry_run: bool = typer.Option(False, "--dry-run"),
-	dns: bool = typer.Option(False, "--dns", help="Resync declared DevDNSRoute assets and stamp the local Doctor URL when devdns is active."),
-) -> None:
+def stamp_urls(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     """Resolve external URLs/endpoints and stamp them into partition YAMLs."""
     _load_bootstrap_env()
     _reload_bootstrap_modules()
-    if dns:
-        devdns.sync_routes(None, dry_run=dry_run, ensure_running=True)
     guardian.stamp_urls(dry_run)

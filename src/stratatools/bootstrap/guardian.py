@@ -12,18 +12,19 @@ from string import Template
 import yaml
 
 from stratatools.util import info, warn, run, TEMPLATES, PARTITIONS
-from . import devdns
 
 NAMESPACE = os.environ.get("GUARDIAN_NAMESPACE", "guardian")
 STORAGE_NAMESPACE = os.environ.get("MONOFS_NAMESPACE", "monofs")
 EXTERNAL_SERVICE_TYPE = os.environ.get("EXTERNAL_SERVICE_TYPE", "LoadBalancer")
 GUARDIAN_IMAGE = os.environ.get("GUARDIAN_IMAGE", "guardian:latest")
+GUARDIAN_IMAGE_PULL_POLICY = os.environ.get("GUARDIAN_IMAGE_PULL_POLICY", "IfNotPresent")
 GUARDIAN_PUSHER_IMAGE = os.environ.get(
     "GUARDIAN_PUSHER_IMAGE", "guardian-pusher-k8s:latest"
 )
 GUARDIAN_PUSHER_AWS_IMAGE = os.environ.get(
     "GUARDIAN_PUSHER_AWS_IMAGE", "guardian-pusher-aws:latest"
 )
+GUARDIAN_LB_IMAGE = os.environ.get("GUARDIAN_LB_IMAGE", "lb:latest")
 GUARDIAN_MONOFS_ROUTER = os.environ.get(
     "GUARDIAN_MONOFS_ROUTER",
     f"monofs-external.{STORAGE_NAMESPACE}.svc.cluster.local:9090",
@@ -43,11 +44,6 @@ GUARDIAN_AWS_PUSHER_NAME = os.environ.get("GUARDIAN_AWS_PUSHER_NAME", _default_a
 GUARDIAN_AWS_ASSUME_ROLE_NAME = os.environ.get(
     "GUARDIAN_AWS_ASSUME_ROLE_NAME", "GuardianCdkDeployRole"
 )
-GUARDIAN_PUSHER_DOCKER_IMAGE = os.environ.get(
-    "GUARDIAN_PUSHER_DOCKER_IMAGE", "guardian-pusher-docker:latest"
-)
-GUARDIAN_DOCKER_PUSHER_NAME = os.environ.get("GUARDIAN_DOCKER_PUSHER_NAME", "docker-lolipop")
-GUARDIAN_DOCKER_CLUSTER = os.environ.get("GUARDIAN_DOCKER_CLUSTER", "docker-main")
 
 
 def _aws_pusher_enabled() -> bool:
@@ -218,9 +214,10 @@ def _vars() -> dict:
         "STORAGE_NAMESPACE": STORAGE_NAMESPACE,
         "EXTERNAL_SERVICE_TYPE": EXTERNAL_SERVICE_TYPE,
         "GUARDIAN_IMAGE": GUARDIAN_IMAGE,
+        "GUARDIAN_IMAGE_PULL_POLICY": GUARDIAN_IMAGE_PULL_POLICY,
         "GUARDIAN_PUSHER_IMAGE": GUARDIAN_PUSHER_IMAGE,
         "GUARDIAN_PUSHER_AWS_IMAGE": GUARDIAN_PUSHER_AWS_IMAGE,
-        "GUARDIAN_PUSHER_DOCKER_IMAGE": GUARDIAN_PUSHER_DOCKER_IMAGE,
+        "GUARDIAN_LB_IMAGE": GUARDIAN_LB_IMAGE,
         "GUARDIAN_MONOFS_ROUTER": GUARDIAN_MONOFS_ROUTER,
         "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT": _guardian_monofs_client_api_endpoint(),
         "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES": GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES,
@@ -232,8 +229,6 @@ def _vars() -> dict:
         "GUARDIAN_AWS_PUSHER_NAME": GUARDIAN_AWS_PUSHER_NAME,
         "GUARDIAN_AWS_ASSUME_ROLE_NAME": GUARDIAN_AWS_ASSUME_ROLE_NAME,
         "GUARDIAN_PUSHERS": GUARDIAN_PUSHERS,
-        "GUARDIAN_DOCKER_PUSHER_NAME": GUARDIAN_DOCKER_PUSHER_NAME,
-        "GUARDIAN_DOCKER_CLUSTER": GUARDIAN_DOCKER_CLUSTER,
         "GUARDIAN_UI_PORT": GUARDIAN_UI_PORT,
         "GUARDIAN_UI_LISTEN": GUARDIAN_UI_LISTEN,
         "GUARDIAN_UI_BASE_URL": GUARDIAN_UI_BASE_URL,
@@ -265,7 +260,21 @@ def build_images(dry_run: bool) -> None:
     cmd_build(["guardian-configs"], dry_run=dry_run)
 
 
-_DEPLOYS = ["guardiand", "guardian-pusher-k8s", "guardian-pusher-docker"]
+def load_images(dry_run: bool) -> None:
+    from stratatools.image import _cluster_load, _cluster_load_mode, kubectl_context
+
+    ctx = kubectl_context()
+    if not _cluster_load_mode(ctx):
+        return
+
+    info(f"=== loading guardian images into cluster context {ctx} ===")
+    for image in [GUARDIAN_IMAGE, GUARDIAN_PUSHER_IMAGE, GUARDIAN_LB_IMAGE]:
+        _cluster_load(image, dry_run)
+    if _aws_pusher_enabled():
+        _cluster_load(GUARDIAN_PUSHER_AWS_IMAGE, dry_run)
+
+
+_DEPLOYS = ["guardiand", "guardian-pusher-k8s"]
 if _aws_pusher_enabled():
     _DEPLOYS.append("guardian-pusher-aws")
 _CLUSTER_ROLE_BINDINGS = [
@@ -280,10 +289,8 @@ def _apply_manifests(dry_run: bool) -> None:
     _apply(_render("secret.yaml"), dry_run)
     _apply(_render("rbac.yaml"), dry_run)
     _apply(_render("svc-guardian-ui.yaml"), dry_run)
-    _apply(_render("svc-guardian-ui-external.yaml"), dry_run)
     _apply(_render("deploy-guardiand.yaml"), dry_run)
     _apply(_render("deploy-pusher-k8s.yaml"), dry_run)
-    _apply(_render("deploy-pusher-docker.yaml"), dry_run)
     if _aws_pusher_enabled():
         _apply(_render("deploy-pusher-aws.yaml"), dry_run)
 
@@ -514,14 +521,25 @@ def _set_top_key(path, key: str, value: str) -> None:
     path.write_text(yaml.safe_dump(data, sort_keys=False))
 
 
-def _set_partition_label(path: Path, key: str, value: str) -> None:
-    if not path.exists():
-        return
-    data = yaml.safe_load(path.read_text()) or {}
-    spec = data.setdefault("spec", {})
-    labels = spec.setdefault("labels", {})
-    labels[key] = value
-    path.write_text(yaml.safe_dump(data, sort_keys=False))
+def _lb_edge_host() -> str:
+    """Return the host address at which the lb-edge port-forward is reachable.
+
+    On WSL2 (or when MONOFS_PORT_FORWARD_ADDRESS is set to 0.0.0.0) the
+    port-forward binds all interfaces, so the eth0 LAN IP works.  Fall back
+    to 127.0.0.1 for loopback-only setups.
+    """
+    configured = os.environ.get("MONOFS_PORT_FORWARD_ADDRESS", "").strip()
+    if configured and configured != "0.0.0.0":
+        return configured
+    # Detect the primary non-loopback IPv4 address.
+    try:
+        s = __import__("socket").socket(__import__("socket").AF_INET, __import__("socket").SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return "127.0.0.1"
 
 
 def stamp_urls(dry_run: bool) -> None:
@@ -531,39 +549,23 @@ def stamp_urls(dry_run: bool) -> None:
     dcfg = PARTITIONS / "doctor" / "config.yaml"
 
     if dry_run:
-        info(f"would resolve guardian-ui-external in {NAMESPACE}")
+        info("would stamp lb-edge URLs into partition configs")
         info(f"would update: {gcp}, {gcfg}, {dq}, {dcfg}")
         return
 
-    ip = _resolve(NAMESPACE, "guardian-ui-external")
-    if not ip:
-        warn("guardian-ui-external has no LoadBalancer IP yet; leaving Guardian UI URL unchanged")
-    else:
-        url = f"http://{ip}:{GUARDIAN_UI_PORT}"
-        info(f"guardian UI URL: {url}")
-        _set_env_in_intent(gcp, "GUARDIAN_UI_BASE_URL", url)
-        _set_top_key(gcfg, "guardian_ui_base_url", url)
-        _set_env_in_intent(dq, "GUARDIAN_UI_BASE_URL", url)
+    host = _lb_edge_host()
+    url = f"http://{host}:{GUARDIAN_UI_PORT}"
+    info(f"guardian UI URL (via lb-edge): {url}")
+    _set_env_in_intent(gcp, "GUARDIAN_UI_BASE_URL", url)
+    _set_top_key(gcfg, "guardian_ui_base_url", url)
+    _set_env_in_intent(dq, "GUARDIAN_UI_BASE_URL", url)
 
-    monofs_client_api_endpoint = _service_external_endpoint(
-        STORAGE_NAMESPACE, "monofs-external", "grpc", "9090"
-    )
-    if monofs_client_api_endpoint:
-        info(f"guardian MonoFS client API endpoint: {monofs_client_api_endpoint}")
-        _set_env_in_intent(
-            gcp,
-            "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT",
-            monofs_client_api_endpoint,
-        )
-    else:
-        warn(
-            "monofs-external has no external gRPC endpoint yet; leaving client API endpoint unchanged"
-        )
+    monofs_grpc_endpoint = f"{host}:9090"
+    info(f"guardian MonoFS client API endpoint (via lb-edge): {monofs_grpc_endpoint}")
+    _set_env_in_intent(gcp, "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", monofs_grpc_endpoint)
 
-    durl = None
-    if devdns.has_active_daemon():
-        durl = devdns.first_route_url("doctor")
-    if durl:
+    dip = _svc_ip(NAMESPACE, "doctor-query-external")
+    if dip:
+        durl = f"http://{dip}:8080"
         info(f"doctor query URL: {durl}")
         _set_top_key(dcfg, "doctor_query_base_url", durl)
-        _set_partition_label(dcfg, "endpoint", durl)

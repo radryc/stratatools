@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: monofs-haproxy
-  namespace: ${NAMESPACE}
+  namespace: ${LB_NAMESPACE}
   labels:
     app: monofs-haproxy
 spec:
@@ -16,16 +16,16 @@ spec:
         app: monofs-haproxy
     spec:
       containers:
-        - name: haproxy
-          image: mirror.gcr.io/library/haproxy:2.9
+        - name: lb-edge
+          image: ${MONOFS_LB_IMAGE}
+          imagePullPolicy: ${MONOFS_IMAGE_PULL_POLICY}
+          env:
+            - name: LB_BOOTSTRAP
+              value: "monofs-grpc@grpc[MonoFS gRPC API]:9090=router-a.${NAMESPACE}.svc.cluster.local:9090,router-b.${NAMESPACE}.svc.cluster.local:9090;monofs-http@http[MonoFS HTTP UI]:8080=router-a.${NAMESPACE}.svc.cluster.local:8080,router-b.${NAMESPACE}.svc.cluster.local:8080;guardian-ui@http[Guardian UI]:8090=guardian-ui.${GUARDIAN_NAMESPACE}.svc.cluster.local:${GUARDIAN_UI_PORT}"
+            - name: LB_REGISTRY_HTTP_ADDR
+              value: "0.0.0.0:18081"
           ports:
             - containerPort: 9090
             - containerPort: 8080
-          volumeMounts:
-            - name: config
-              mountPath: /usr/local/etc/haproxy/haproxy.cfg
-              subPath: haproxy.cfg
-      volumes:
-        - name: config
-          configMap:
-            name: monofs-haproxy
+            - containerPort: 8090
+            - containerPort: 18081

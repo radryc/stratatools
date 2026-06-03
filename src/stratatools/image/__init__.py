@@ -24,6 +24,7 @@ DOCTOR_REPO_DIR = Path(os.environ.get("DOCTOR_REPO_DIR", AINFRA / "doctor"))
 KVS_REPO_DIR = Path(os.environ.get("KVS_REPO_DIR", AINFRA / "kvs"))
 K8S_TOP_REPO_DIR = Path(os.environ.get("K8S_TOP_REPO_DIR", AINFRA / "k8s-top"))
 AGENT_REPO_DIR = Path(os.environ.get("AGENT_REPO_DIR", AINFRA / "agent"))
+LB_REPO_DIR = Path(os.environ.get("LB_REPO_DIR", AINFRA / "lb"))
 
 PARTITIONS_LIST: list[str] = [
     "guardian-configs", "opentelemetry", "k8s-top",
@@ -37,6 +38,7 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
          ["--build-context", f"monofs={MONOFS_REPO_DIR}",
           "--build-context", f"kvs={KVS_REPO_DIR}"],
          GUARDIAN_REPO_DIR),
+        ("lb:latest", [], LB_REPO_DIR),
         ("guardian-pusher-k8s:latest",
          ["-f", str(GUARDIAN_REPO_DIR / "Dockerfile.pusher-k8s"),
           "--build-context", f"monofs={MONOFS_REPO_DIR}",
@@ -47,17 +49,15 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
           "--build-context", f"monofs={MONOFS_REPO_DIR}",
           "--build-context", f"kvs={KVS_REPO_DIR}"],
          GUARDIAN_REPO_DIR),
-        ("guardian-pusher-docker:latest",
-         ["-f", str(GUARDIAN_REPO_DIR / "Dockerfile.pusher-docker"),
-          "--build-context", f"monofs={MONOFS_REPO_DIR}",
-          "--build-context", f"kvs={KVS_REPO_DIR}"],
-         GUARDIAN_REPO_DIR),
     ],
-    "opentelemetry": [],
+    "opentelemetry": [
+        ("lb:latest", [], LB_REPO_DIR),
+    ],
     "k8s-top": [
         ("k8s-top:latest", ["-f", str(K8S_TOP_REPO_DIR / "Dockerfile")], AINFRA),
     ],
     "doctor": [
+        ("lb:latest", [], LB_REPO_DIR),
         ("doctor-ingest:latest",
          ["--build-arg", "DOCTOR_SERVICE=doctor-ingest", "--build-context", f"monofs={MONOFS_REPO_DIR}"],
          DOCTOR_REPO_DIR),
@@ -65,8 +65,11 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
          ["--build-arg", "DOCTOR_SERVICE=doctor-query", "--build-context", f"monofs={MONOFS_REPO_DIR}"],
          DOCTOR_REPO_DIR),
     ],
-    "monitoring": [],
+    "monitoring": [
+        ("lb:latest", [], LB_REPO_DIR),
+    ],
     "dev-workspace": [
+        ("lb:latest", [], LB_REPO_DIR),
         ("monofs-client:dev-base", ["--target", "client"], MONOFS_REPO_DIR),
         ("dev-workspace-vscode:latest",
          ["-f", str(ROOT / "images" / "dev-workspace-vscode" / "Dockerfile"),
@@ -74,6 +77,7 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
          AINFRA),
     ],
     "agent": [
+        ("lb:latest", [], LB_REPO_DIR),
         ("lagent-llm:latest", [], AGENT_REPO_DIR / "llm"),
         ("lagent-backend:latest", [], AGENT_REPO_DIR / "backend"),
         ("lagent-frontend:latest", [], AGENT_REPO_DIR / "frontend"),
@@ -81,21 +85,15 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
 }
 
 OTEL_UPSTREAM = "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.108.0"
-HAPROXY_UPSTREAM = "mirror.gcr.io/library/haproxy:2.9"
 GRAFANA_UPSTREAM = "mirror.gcr.io/grafana/grafana:13.0.0"
 
 # (upstream_ref, local_repo:tag-without-registry)
 MIRROR_RECIPES: dict[str, list[tuple[str, str]]] = {
     "opentelemetry": [
         (OTEL_UPSTREAM, "otel/opentelemetry-collector-contrib:latest"),
-        (HAPROXY_UPSTREAM, "library/haproxy:2.9"),
     ],
     "monitoring": [
         (GRAFANA_UPSTREAM, "grafana/grafana:13.0.0"),
-        (HAPROXY_UPSTREAM, "library/haproxy:2.9"),
-    ],
-    "agent": [
-        (HAPROXY_UPSTREAM, "library/haproxy:2.9"),
     ],
 }
 

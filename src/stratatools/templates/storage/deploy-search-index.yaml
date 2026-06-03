@@ -20,6 +20,7 @@ spec:
       containers:
         - name: search
           image: ${MONOFS_SEARCH_IMAGE}
+          imagePullPolicy: ${MONOFS_IMAGE_PULL_POLICY}
           args:
             - --port=9100
             - --index-dir=/data/indexes

@@ -5,7 +5,6 @@ from datetime import datetime
 import os
 import platform
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -21,7 +20,6 @@ PARTITIONS_DIR = ROOT / "partitions"
 PARTITION_TEMPLATE_DIR = PARTITIONS_DIR / "_template"
 
 REPOS: dict[str, str] = {
-    "devdns":   "https://github.com/radryc/devdns.git",
     "guardian": "https://github.com/radryc/guardian.git",
     "doctor":   "https://github.com/radryc/doctor.git",
     "monofs":   "https://github.com/radryc/monofs.git",
@@ -97,208 +95,11 @@ CLUSTER_HINT = [
     "  - Install minikube: https://minikube.sigs.k8s.io/docs/start/",
     "  - Point KUBECONFIG at a remote cluster",
 ]
-
-KIND_CLUSTER_NAME = "stratatools"
-KIND_CLUSTER_CONFIG = """\
-apiVersion: kind.x-k8s.io/v1alpha4
-kind: Cluster
-nodes:
-- role: control-plane
-- role: worker
-- role: worker
-- role: worker
-"""
+KIND_INSTALL_TARGET = "sigs.k8s.io/kind@latest"
+DEFAULT_KIND_CLUSTER = "strata"
+DEFAULT_KIND_WORKERS = 3
 
 app = typer.Typer(no_args_is_help=False, help="bootstrap sibling repos and verify host prerequisites")
-
-
-# ── Auto-install helpers (Linux only) ────────────────────────────────────────
-
-
-def _arch() -> str:
-    m = platform.machine().lower()
-    if m in ("x86_64", "amd64"):
-        return "amd64"
-    if m in ("aarch64", "arm64"):
-        return "arm64"
-    return m
-
-
-def _is_auto_install_supported(pkey: str) -> bool:
-    """kubectl and kind can be auto-installed on native Linux and WSL."""
-    return pkey.startswith("linux") or pkey == "wsl"
-
-
-def _docker_auto_install_supported(pkey: str) -> bool:
-    """Docker auto-install only on native Linux (WSL uses Docker Desktop on the Windows host)."""
-    return pkey.startswith("linux")
-
-
-def _run_cmd(cmd: list[str], *, timeout: int = 60) -> bool:
-    """Run a command, stream output to the terminal, return True on success."""
-    try:
-        r = subprocess.run(cmd, timeout=timeout)
-        return r.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return False
-
-
-def _auto_install_docker() -> tuple[bool, bool]:
-    """Ensure docker is installed and running.
-
-    Returns (success, fresh_install).
-    """
-    if shutil.which("docker"):
-        # Binary present but daemon not running — try to start the service.
-        info("  → Docker binary found; starting daemon via systemctl…")
-        if shutil.which("systemctl"):
-            _run_cmd(["sudo", "systemctl", "enable", "--now", "docker"], timeout=30)
-        ok, _ = _try_version(["docker", "info"])
-        if ok:
-            return True, False
-        info("  ✗ Could not start Docker daemon.")
-        return False, False
-
-    # Docker not installed — install via official get-docker.sh script.
-    info("  → Downloading Docker install script (requires sudo)…")
-    with tempfile.NamedTemporaryFile(suffix=".sh", delete=False) as tf:
-        script_path = tf.name
-    try:
-        if not _run_cmd(["curl", "-fsSL", "https://get.docker.com", "-o", script_path]):
-            info("  ✗ Failed to download Docker install script.")
-            return False, False
-        info("  → Running Docker install script (this may take a few minutes)…")
-        if not _run_cmd(["sudo", "sh", script_path], timeout=300):
-            info("  ✗ Docker install script failed.")
-            return False, False
-    finally:
-        Path(script_path).unlink(missing_ok=True)
-
-    # Add current user to the docker group.
-    user = os.environ.get("USER") or os.environ.get("LOGNAME", "")
-    if user:
-        r = subprocess.run(["sudo", "usermod", "-aG", "docker", user], check=False)
-        if r.returncode != 0:
-            info("  ⚠ Could not add user to docker group.")
-
-    # Enable and start the service.
-    if shutil.which("systemctl"):
-        _run_cmd(["sudo", "systemctl", "enable", "--now", "docker"], timeout=30)
-
-    # Verify via sudo since the current session lacks the docker group.
-    r = subprocess.run(["sudo", "docker", "info"], capture_output=True, timeout=15)
-    if r.returncode != 0:
-        info("  ✗ Docker daemon not responding after install.")
-        return False, False
-
-    info("  → Docker installed. Note: log out/in for group permissions to take effect.")
-    return True, True
-
-
-def _auto_install_kubectl() -> bool:
-    """Download and install the latest stable kubectl binary."""
-    info("  → Fetching latest kubectl version…")
-    try:
-        r = subprocess.run(
-            ["curl", "-fsSL", "https://dl.k8s.io/release/stable.txt"],
-            capture_output=True, text=True, timeout=30, check=True,
-        )
-        version = r.stdout.strip()
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-        info("  ✗ Could not fetch kubectl version.")
-        return False
-
-    arch = _arch()
-    url = f"https://dl.k8s.io/release/{version}/bin/linux/{arch}/kubectl"
-    info(f"  → Downloading kubectl {version} ({arch})…")
-    with tempfile.NamedTemporaryFile(delete=False) as tf:
-        tmp_path = tf.name
-    try:
-        if not _run_cmd(["curl", "-fsSLo", tmp_path, url]):
-            info("  ✗ Failed to download kubectl.")
-            return False
-        if not _run_cmd(["sudo", "install", "-m", "0755", tmp_path, "/usr/local/bin/kubectl"]):
-            info("  ✗ Failed to install kubectl.")
-            return False
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
-    return True
-
-
-def _auto_install_kind() -> bool:
-    """Download and install the latest kind binary."""
-    arch = _arch()
-    url = f"https://kind.sigs.k8s.io/dl/latest/kind-linux-{arch}"
-    info(f"  → Downloading kind ({arch})…")
-    with tempfile.NamedTemporaryFile(delete=False) as tf:
-        tmp_path = tf.name
-    try:
-        if not _run_cmd(["curl", "-fsSLo", tmp_path, url]):
-            info("  ✗ Failed to download kind.")
-            return False
-        Path(tmp_path).chmod(0o755)
-        if not _run_cmd(["sudo", "mv", tmp_path, "/usr/local/bin/kind"]):
-            info("  ✗ Failed to install kind.")
-            return False
-    except Exception:
-        Path(tmp_path).unlink(missing_ok=True)
-        return False
-    return True
-
-
-def _create_kind_cluster(*, docker_fresh: bool) -> bool:
-    """Create (or verify) a 4-node kind cluster — 1 control-plane + 3 workers."""
-    # If cluster is already registered in kind, just refresh the kubeconfig.
-    r = subprocess.run(["kind", "get", "clusters"], capture_output=True, text=True, check=False)
-    if r.returncode == 0 and KIND_CLUSTER_NAME in r.stdout.split():
-        info(f"  → Cluster '{KIND_CLUSTER_NAME}' already registered; refreshing kubeconfig…")
-        subprocess.run(["kind", "export", "kubeconfig", "--name", KIND_CLUSTER_NAME], check=False)
-        c_ok, _ = _try_version(["kubectl", "cluster-info", "--context", f"kind-{KIND_CLUSTER_NAME}"])
-        if c_ok:
-            return True
-        info(f"  → Existing cluster unreachable; recreating…")
-        subprocess.run(["kind", "delete", "cluster", "--name", KIND_CLUSTER_NAME], check=False)
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tf:
-        tf.write(KIND_CLUSTER_CONFIG)
-        config_path = tf.name
-
-    base_cmd = [
-        "kind", "create", "cluster",
-        "--name", KIND_CLUSTER_NAME,
-        "--config", config_path,
-    ]
-    try:
-        info(f"  → Creating 4-node cluster '{KIND_CLUSTER_NAME}' (1 control-plane + 3 workers)…")
-        if docker_fresh:
-            # Docker group isn't active in this session yet.
-            # Use 'sg docker' to re-enter the group within the same session.
-            if shutil.which("sg"):
-                cmd_str = " ".join(shlex.quote(c) for c in base_cmd)
-                result = subprocess.run(["sg", "docker", "-c", cmd_str], timeout=600)
-            else:
-                result = subprocess.run(base_cmd, timeout=600)
-            if result.returncode != 0:
-                info("  ⚠ Cluster creation failed — docker group may not be active yet.")
-                info("    Log out, log back in, then re-run `st-setup`.")
-                return False
-        else:
-            if not _run_cmd(base_cmd, timeout=600):
-                info("  ✗ kind create cluster failed.")
-                return False
-
-        # Refresh kubeconfig and verify reachability.
-        subprocess.run(["kind", "export", "kubeconfig", "--name", KIND_CLUSTER_NAME], check=False)
-        c_ok, _ = _try_version(["kubectl", "cluster-info", "--context", f"kind-{KIND_CLUSTER_NAME}"])
-        if not c_ok:
-            info(f"  ✗ Cluster created but kubectl cannot reach it (context kind-{KIND_CLUSTER_NAME}).")
-            return False
-        return True
-    except subprocess.TimeoutExpired:
-        info("  ✗ Cluster creation timed out.")
-        return False
-    finally:
-        Path(config_path).unlink(missing_ok=True)
 
 
 def _isatty() -> bool:
@@ -359,6 +160,152 @@ def _try_version(cmd: list[str]) -> tuple[bool, str]:
         return False, (r.stderr or r.stdout).strip().splitlines()[0] if (r.stderr or r.stdout) else ""
     out = (r.stdout or r.stderr).strip().splitlines()[0] if (r.stdout or r.stderr) else ""
     return True, out
+
+
+def _go_bin_dir() -> Path:
+    gobin = os.environ.get("GOBIN", "").strip()
+    if gobin:
+        return Path(gobin).expanduser()
+    gopath = os.environ.get("GOPATH", "").strip()
+    if gopath:
+        return Path(gopath).expanduser() / "bin"
+    return Path.home() / "go" / "bin"
+
+
+def _kind_binary() -> str | None:
+    binary = shutil.which("kind")
+    if binary:
+        return binary
+    suffix = ".exe" if platform.system().lower() == "windows" else ""
+    candidate = _go_bin_dir() / f"kind{suffix}"
+    return str(candidate) if candidate.is_file() else None
+
+
+def _kind_config(worker_count: int) -> str:
+    lines = [
+        "kind: Cluster",
+        "apiVersion: kind.x-k8s.io/v1alpha4",
+        "nodes:",
+        "  - role: control-plane",
+    ]
+    for _ in range(worker_count):
+        lines.append("  - role: worker")
+    return "\n".join(lines) + "\n"
+
+
+def _ensure_kind_binary(dry_run: bool) -> str | None:
+    binary = _kind_binary()
+    if binary:
+        return binary
+
+    info("kind not found on PATH; installing it with `go install`")
+    result = run(["go", "install", KIND_INSTALL_TARGET], check=False, dry_run=dry_run)
+    if dry_run:
+        return str(_go_bin_dir() / "kind")
+    if result is None or result.returncode != 0:
+        return None
+    return _kind_binary()
+
+
+def _kind_cluster_exists(kind_bin: str, name: str) -> bool:
+    result = subprocess.run(
+        [kind_bin, "get", "clusters"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        return False
+    return name in {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
+def _ensure_kind_cluster(name: str, worker_count: int, *, dry_run: bool) -> bool:
+    kind_bin = _ensure_kind_binary(dry_run)
+    if not kind_bin:
+        return False
+
+    if dry_run:
+        info(f"+ {kind_bin} create cluster --name {name} --config <generated>")
+        info(f"+ {kind_bin} export kubeconfig --name {name}")
+        return True
+
+    if _kind_cluster_exists(kind_bin, name):
+        info(f"kind cluster '{name}' already exists; exporting kubeconfig")
+    else:
+        info(
+            f"creating kind cluster '{name}' with 1 control-plane and {worker_count} workers"
+        )
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", suffix=".yaml", delete=False
+        ) as handle:
+            handle.write(_kind_config(worker_count))
+            config_path = Path(handle.name)
+        try:
+            result = run(
+                [kind_bin, "create", "cluster", "--name", name, "--config", str(config_path)],
+                check=False,
+            )
+            if result is None or result.returncode != 0:
+                return False
+        finally:
+            config_path.unlink(missing_ok=True)
+
+    result = run([kind_bin, "export", "kubeconfig", "--name", name], check=False)
+    return bool(result and result.returncode == 0)
+
+
+def _check_cluster_reachability(
+    missing: list[str],
+    *,
+    auto_kind: bool,
+    kind_name: str,
+    kind_workers: int,
+    dry_run: bool,
+    allow_create: bool,
+) -> bool:
+    if "kubectl" in missing:
+        info(_row(_mark("fail"), "cluster", "kubectl missing"))
+        return False
+
+    cluster_ok, _ = _try_version(["kubectl", "cluster-info"])
+    if cluster_ok:
+        info(_row(_mark("ok"), "cluster", "reachable"))
+        return True
+
+    info(_row(_mark("fail"), "cluster", "unreachable"))
+    can_auto_kind = auto_kind and allow_create and "docker" not in missing and "go" not in missing
+    if not can_auto_kind:
+        return False
+
+    if dry_run:
+        info(
+            _row(
+                _mark("opt"),
+                "kind cluster",
+                f"would create {kind_name} (1 control-plane + {kind_workers} workers)",
+            )
+        )
+        return False
+
+    kind_ok = _ensure_kind_cluster(kind_name, kind_workers, dry_run=False)
+    if not kind_ok:
+        info(_row(_mark("fail"), "kind cluster", f"{kind_name} provision failed"))
+        return False
+
+    cluster_ok, _ = _try_version(["kubectl", "cluster-info"])
+    if cluster_ok:
+        info(
+            _row(
+                _mark("ok"),
+                "kind cluster",
+                f"{kind_name} (1 control-plane + {kind_workers} workers)",
+            )
+        )
+        info(_row(_mark("ok"), "cluster", f"reachable via kind-{kind_name}"))
+        return True
+
+    info(_row(_mark("fail"), "cluster", "still unreachable after kind provisioning"))
+    return False
 
 
 def _parse_go_version(s: str) -> tuple[int, int] | None:
@@ -462,12 +409,24 @@ def main(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Print clone commands without executing.",
     ),
+    auto_kind: bool = typer.Option(
+        True,
+        "--auto-kind/--no-auto-kind",
+        help="Create or reuse a local kind cluster automatically when no Kubernetes cluster is reachable.",
+    ),
+    kind_name: str = typer.Option(
+        DEFAULT_KIND_CLUSTER,
+        "--kind-name",
+        help="Name of the kind cluster to create or reuse when auto-kind is enabled.",
+    ),
+    kind_workers: int = typer.Option(
+        DEFAULT_KIND_WORKERS,
+        "--kind-workers",
+        min=1,
+        help="Number of worker nodes for the auto-created kind cluster.",
+    ),
     no_install_hints: bool = typer.Option(
         False, "--no-install-hints", help="Suppress per-tool install instructions.",
-    ),
-    auto_install: bool = typer.Option(
-        True, "--auto-install/--no-auto-install",
-        help="Automatically install missing Docker/Kubernetes tools on Linux (default: on).",
     ),
 ) -> None:
     if ctx.invoked_subcommand is not None:
@@ -522,51 +481,14 @@ def main(
 
     info("")
     info("=== Kubernetes cluster ===")
-    if "kubectl" not in missing:
-        c_ok, _ = _try_version(["kubectl", "cluster-info"])
-        cluster_ok = c_ok
-        info(_row(_mark("ok" if c_ok else "fail"), "cluster", "reachable" if c_ok else "unreachable"))
-    else:
-        info(_row(_mark("fail"), "cluster", "kubectl missing"))
-
-    # ── Auto-install missing Docker / Kubernetes on native Linux ─────────────
-    if auto_install and _is_auto_install_supported(pkey):
-        docker_fresh = False
-
-        if "docker" in missing and _docker_auto_install_supported(pkey):
-            info("")
-            info("=== Auto-installing Docker ===")
-            ok, docker_fresh = _auto_install_docker()
-            if ok:
-                missing.remove("docker")
-                label = "installed" if docker_fresh else "daemon started"
-                info(_row(_mark("ok"), "docker", label))
-            else:
-                info(_row(_mark("fail"), "docker", "auto-install failed — see hints below"))
-
-        if "kubectl" in missing:
-            info("")
-            info("=== Auto-installing kubectl ===")
-            if _auto_install_kubectl():
-                missing.remove("kubectl")
-                info(_row(_mark("ok"), "kubectl", "installed"))
-            else:
-                info(_row(_mark("fail"), "kubectl", "auto-install failed — see hints below"))
-
-        if not cluster_ok and "kubectl" not in missing:
-            info("")
-            info("=== Setting up Kubernetes cluster (kind) ===")
-            kind_installed = bool(shutil.which("kind"))
-            if not kind_installed:
-                info("  kind not found — installing…")
-                kind_installed = _auto_install_kind()
-                if not kind_installed:
-                    info(_row(_mark("fail"), "kind", "install failed — see hints below"))
-
-            if kind_installed:
-                if _create_kind_cluster(docker_fresh=docker_fresh):
-                    cluster_ok = True
-                    info(_row(_mark("ok"), "cluster", f"kind/{KIND_CLUSTER_NAME} ready (4 nodes)"))
+    cluster_ok = _check_cluster_reachability(
+        missing,
+        auto_kind=auto_kind,
+        kind_name=kind_name,
+        kind_workers=kind_workers,
+        dry_run=dry_run,
+        allow_create=not check_only,
+    )
 
     # Repos
     info("")

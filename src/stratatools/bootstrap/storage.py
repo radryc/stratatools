@@ -5,7 +5,10 @@ import json
 import os
 import re
 import secrets
+import signal
+import socket
 import subprocess
+import time
 from pathlib import Path
 from string import Template
 
@@ -13,6 +16,7 @@ from stratatools.monofs_key import is_valid_monofs_encryption_key, resolve_monof
 from stratatools.util import die, info, run, TEMPLATES, ROOT, warn
 
 NAMESPACE = os.environ.get("MONOFS_NAMESPACE", "monofs")
+LB_NAMESPACE = os.environ.get("LB_NAMESPACE", "lb-edge")
 EXTERNAL_SERVICE_TYPE = os.environ.get("EXTERNAL_SERVICE_TYPE", "LoadBalancer")
 EXTERNAL_ADDRESS_TEMPLATE = os.environ.get("EXTERNAL_ADDRESS_TEMPLATE", "")
 MINIO_PVC_SIZE = os.environ.get("MINIO_PVC_SIZE", "50Gi")
@@ -26,6 +30,7 @@ MONOFS_SERVER_IMAGE = os.environ.get("MONOFS_SERVER_IMAGE", "monofs-server:lates
 MONOFS_ROUTER_IMAGE = os.environ.get("MONOFS_ROUTER_IMAGE", "monofs-router:latest")
 MONOFS_FETCHER_IMAGE = os.environ.get("MONOFS_FETCHER_IMAGE", "monofs-fetcher:latest")
 MONOFS_SEARCH_IMAGE = os.environ.get("MONOFS_SEARCH_IMAGE", "monofs-search:latest")
+MONOFS_LB_IMAGE = os.environ.get("MONOFS_LB_IMAGE", "lb:latest")
 MINIO_IMAGE = os.environ.get("MINIO_IMAGE", "mirror.gcr.io/minio/minio:latest")
 MONOFS_IMAGE_PULL_POLICY = os.environ.get("MONOFS_IMAGE_PULL_POLICY", "IfNotPresent")
 MONOFS_OTEL_ENDPOINT = os.environ.get("MONOFS_OTEL_ENDPOINT", "")
@@ -33,6 +38,15 @@ MONOFS_OTEL_INSECURE = os.environ.get("MONOFS_OTEL_INSECURE", "true")
 MONOFS_OTEL_SERVICE_NAME = os.environ.get("MONOFS_OTEL_SERVICE_NAME", "monofs-server")
 MONOFS_OTEL_METRIC_INTERVAL = os.environ.get("MONOFS_OTEL_METRIC_INTERVAL", "30s")
 MONOFS_REPO_DIR = Path(os.environ.get("MONOFS_REPO_DIR", str(ROOT.parent / "monofs")))
+LB_REPO_DIR = Path(os.environ.get("LB_REPO_DIR", str(ROOT.parent / "lb")))
+PORT_FORWARD_STATE_DIR = Path.home() / ".stratatools" / "port-forwards"
+MONOFS_PORT_FORWARD_PID_FILE = PORT_FORWARD_STATE_DIR / "monofs-external.pid"
+MONOFS_PORT_FORWARD_LOG_FILE = PORT_FORWARD_STATE_DIR / "monofs-external.log"
+MONOFS_PORT_FORWARD_CMD_FILE = PORT_FORWARD_STATE_DIR / "monofs-external.cmd"
+MONOFS_LOCAL_HTTP_PORT = int(os.environ.get("MONOFS_LOCAL_HTTP_PORT", "8080"))
+MONOFS_LOCAL_GRPC_PORT = int(os.environ.get("MONOFS_LOCAL_GRPC_PORT", "9090"))
+GUARDIAN_LOCAL_UI_PORT = int(os.environ.get("GUARDIAN_UI_PORT", "8090"))
+LB_LOCAL_ADMIN_PORT = int(os.environ.get("LB_LOCAL_ADMIN_PORT", "18081"))
 NODE_NAMES = ("node-a", "node-b", "node-c", "node-d", "node-e")
 ROUTER_SUFFIXES = ("a", "b")
 
@@ -238,8 +252,8 @@ def _discover_external_addr_csv() -> str:
     return ",".join(external_addrs)
 
 
-def _deployment_selector(deployment: str) -> str:
-    raw = _kubectl_query(["-n", NAMESPACE, "get", "deployment", deployment, "-o", "json"])
+def _deployment_selector(deployment: str, namespace: str = NAMESPACE) -> str:
+    raw = _kubectl_query(["-n", namespace, "get", "deployment", deployment, "-o", "json"])
     if not raw:
         return ""
     try:
@@ -249,12 +263,12 @@ def _deployment_selector(deployment: str) -> str:
     return ",".join(f"{key}={value}" for key, value in match_labels.items())
 
 
-def _terminating_pods_for_deployment(deployment: str) -> list[str]:
-    selector = _deployment_selector(deployment)
+def _terminating_pods_for_deployment(deployment: str, namespace: str = NAMESPACE) -> list[str]:
+    selector = _deployment_selector(deployment, namespace)
     if not selector:
         return []
 
-    raw = _kubectl_query(["-n", NAMESPACE, "get", "pods", "-l", selector, "-o", "json"])
+    raw = _kubectl_query(["-n", namespace, "get", "pods", "-l", selector, "-o", "json"])
     if not raw:
         return []
     try:
@@ -268,11 +282,11 @@ def _terminating_pods_for_deployment(deployment: str) -> list[str]:
     ]
 
 
-def _wait_rollout(deployment: str, dry_run: bool) -> None:
+def _wait_rollout(deployment: str, dry_run: bool, namespace: str = NAMESPACE) -> None:
     cmd = [
         "kubectl",
         "-n",
-        NAMESPACE,
+        namespace,
         "rollout",
         "status",
         f"deployment/{deployment}",
@@ -282,7 +296,7 @@ def _wait_rollout(deployment: str, dry_run: bool) -> None:
     if dry_run or (result and result.returncode == 0):
         return
 
-    terminating_pods = _terminating_pods_for_deployment(deployment)
+    terminating_pods = _terminating_pods_for_deployment(deployment, namespace)
     if not terminating_pods:
         die(
             f"deployment/{deployment} did not finish rolling out within "
@@ -298,7 +312,7 @@ def _wait_rollout(deployment: str, dry_run: bool) -> None:
             [
                 "kubectl",
                 "-n",
-                NAMESPACE,
+                namespace,
                 "delete",
                 "pod",
                 pod,
@@ -312,7 +326,7 @@ def _wait_rollout(deployment: str, dry_run: bool) -> None:
         [
             "kubectl",
             "-n",
-            NAMESPACE,
+            namespace,
             "wait",
             "--for=delete",
             "pod",
@@ -355,6 +369,7 @@ def _vars() -> dict:
         "MONOFS_ROUTER_IMAGE": MONOFS_ROUTER_IMAGE,
         "MONOFS_FETCHER_IMAGE": MONOFS_FETCHER_IMAGE,
         "MONOFS_SEARCH_IMAGE": MONOFS_SEARCH_IMAGE,
+        "MONOFS_LB_IMAGE": MONOFS_LB_IMAGE,
         "MINIO_IMAGE": MINIO_IMAGE,
         "MONOFS_IMAGE_PULL_POLICY": MONOFS_IMAGE_PULL_POLICY,
         "MONOFS_OTEL_ENDPOINT": MONOFS_OTEL_ENDPOINT,
@@ -368,6 +383,11 @@ def _vars() -> dict:
         "MONOFS_NODE_ADDRS": _internal_node_addr_csv(),
         "MONOFS_EXTERNAL_ADDRS": _default_external_addr_csv(),
         "SUFFIX": "",
+        # guardian vars needed by deploy-haproxy.yaml (lb-edge proxies guardian UI)
+        "GUARDIAN_NAMESPACE": os.environ.get("GUARDIAN_NAMESPACE", "guardian"),
+        "GUARDIAN_UI_PORT": os.environ.get("GUARDIAN_UI_PORT", "8090"),
+        # lb-edge dedicated namespace
+        "LB_NAMESPACE": LB_NAMESPACE,
     }
 
 
@@ -401,6 +421,242 @@ def build_images(dry_run: bool) -> None:
             check=True,
             dry_run=dry_run,
         )
+    run(
+        ["docker", "build", "-t", MONOFS_LB_IMAGE, "-f", str(LB_REPO_DIR / "Dockerfile"), str(LB_REPO_DIR)],
+        check=True,
+        dry_run=dry_run,
+    )
+
+
+def load_images(dry_run: bool) -> None:
+    from stratatools.image import _cluster_load, _cluster_load_mode, kubectl_context
+
+    ctx = kubectl_context()
+    if not _cluster_load_mode(ctx):
+        return
+
+    info(f"=== loading storage images into cluster context {ctx} ===")
+    for image in [
+        MONOFS_SERVER_IMAGE,
+        MONOFS_ROUTER_IMAGE,
+        MONOFS_FETCHER_IMAGE,
+        MONOFS_SEARCH_IMAGE,
+        MONOFS_LB_IMAGE,
+    ]:
+        _cluster_load(image, dry_run)
+
+
+def _is_wsl() -> bool:
+    if os.environ.get("WSL_DISTRO_NAME", "").strip():
+        return True
+    try:
+        return "microsoft" in os.uname().release.lower()
+    except AttributeError:
+        return False
+
+
+def _local_port_forward_address() -> str:
+    configured = os.environ.get("MONOFS_PORT_FORWARD_ADDRESS", "").strip()
+    if configured:
+        return configured
+    if _is_wsl():
+        return "0.0.0.0"
+    return ""
+
+
+def _legacy_local_port_forward_command() -> list[str]:
+    return [
+        "kubectl",
+        "-n",
+        LB_NAMESPACE,
+        "port-forward",
+        "svc/monofs-external",
+        f"{MONOFS_LOCAL_HTTP_PORT}:8080",
+        f"{MONOFS_LOCAL_GRPC_PORT}:9090",
+        f"{GUARDIAN_LOCAL_UI_PORT}:8090",
+        f"{LB_LOCAL_ADMIN_PORT}:18081",
+    ]
+
+
+def _local_port_forward_command() -> list[str]:
+    command = [
+        "kubectl",
+        "-n",
+        LB_NAMESPACE,
+        "port-forward",
+    ]
+    address = _local_port_forward_address()
+    if address:
+        command.extend(["--address", address])
+    command.extend(
+        [
+            "svc/monofs-external",
+            f"{MONOFS_LOCAL_HTTP_PORT}:8080",
+            f"{MONOFS_LOCAL_GRPC_PORT}:9090",
+            f"{GUARDIAN_LOCAL_UI_PORT}:8090",
+            f"{LB_LOCAL_ADMIN_PORT}:18081",
+        ]
+    )
+    return command
+
+
+def _local_port_open(port: int) -> bool:
+    for host in ("127.0.0.1", "::1"):
+        family = socket.AF_INET6 if ":" in host else socket.AF_INET
+        sock = socket.socket(family, socket.SOCK_STREAM)
+        try:
+            sock.settimeout(0.5)
+            sock.connect((host, port))
+            return True
+        except OSError:
+            continue
+        finally:
+            sock.close()
+    return False
+
+
+def _local_ports_open() -> bool:
+    return (
+        _local_port_open(MONOFS_LOCAL_HTTP_PORT)
+        and _local_port_open(MONOFS_LOCAL_GRPC_PORT)
+        and _local_port_open(GUARDIAN_LOCAL_UI_PORT)
+        and _local_port_open(LB_LOCAL_ADMIN_PORT)
+    )
+
+
+def _managed_port_forward_pid() -> int | None:
+    try:
+        raw = MONOFS_PORT_FORWARD_PID_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _managed_port_forward_command() -> list[str] | None:
+    try:
+        raw = MONOFS_PORT_FORWARD_CMD_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        command = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(command, list) or not all(isinstance(item, str) for item in command):
+        return None
+    return command
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _clear_managed_port_forward_state() -> None:
+    MONOFS_PORT_FORWARD_PID_FILE.unlink(missing_ok=True)
+    MONOFS_PORT_FORWARD_CMD_FILE.unlink(missing_ok=True)
+
+
+def ensure_local_port_forward(dry_run: bool) -> None:
+    command = _local_port_forward_command()
+    if dry_run:
+        info("+ " + " ".join(command))
+        return
+
+    pid = _managed_port_forward_pid()
+    if pid and _pid_alive(pid):
+        managed_command = _managed_port_forward_command()
+        if managed_command is None:
+            managed_command = _legacy_local_port_forward_command()
+        if managed_command != command:
+            info("restarting monofs localhost port-forward to apply updated bind settings")
+            stop_local_port_forward(False)
+            pid = None
+        elif _local_ports_open():
+            info(
+                f"monofs localhost ports already exposed on {MONOFS_LOCAL_HTTP_PORT} and {MONOFS_LOCAL_GRPC_PORT}"
+            )
+            return
+
+    if pid and not _pid_alive(pid):
+        _clear_managed_port_forward_state()
+
+    if _local_ports_open():
+        info(
+            f"monofs localhost ports already in use on {MONOFS_LOCAL_HTTP_PORT} and {MONOFS_LOCAL_GRPC_PORT}; leaving existing forwarder in place"
+        )
+        return
+
+    PORT_FORWARD_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    with MONOFS_PORT_FORWARD_LOG_FILE.open("a", encoding="utf-8") as log_handle:
+        proc = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    MONOFS_PORT_FORWARD_PID_FILE.write_text(f"{proc.pid}\n", encoding="utf-8")
+    MONOFS_PORT_FORWARD_CMD_FILE.write_text(json.dumps(command), encoding="utf-8")
+
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            break
+        if _local_ports_open():
+            info(
+                f"exposed monofs on localhost:{MONOFS_LOCAL_HTTP_PORT} and localhost:{MONOFS_LOCAL_GRPC_PORT}"
+            )
+            return
+        time.sleep(0.2)
+
+    detail = ""
+    try:
+        detail = MONOFS_PORT_FORWARD_LOG_FILE.read_text(encoding="utf-8")[-400:].strip()
+    except OSError:
+        pass
+    _clear_managed_port_forward_state()
+    die(
+        "failed to expose monofs localhost ports via kubectl port-forward"
+        + (f": {detail}" if detail else "")
+    )
+
+
+def stop_local_port_forward(dry_run: bool) -> None:
+    pid = _managed_port_forward_pid()
+    if pid is None:
+        return
+    info(
+        f"stopping port-forward on {MONOFS_LOCAL_HTTP_PORT}, {MONOFS_LOCAL_GRPC_PORT} and {GUARDIAN_LOCAL_UI_PORT}"
+    )
+    if dry_run:
+        return
+
+    try:
+        os.killpg(pid, signal.SIGTERM)
+    except OSError:
+        _clear_managed_port_forward_state()
+        return
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if not _pid_alive(pid):
+            _clear_managed_port_forward_state()
+            return
+        time.sleep(0.1)
+
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except OSError:
+        pass
+    _clear_managed_port_forward_state()
 
 
 _DEPLOYS = [
@@ -415,14 +671,12 @@ _DEPLOYS = [
     "node-e",
     "router-a",
     "router-b",
-    "monofs-haproxy",
 ]
 
 
 def _apply_manifests(dry_run: bool) -> None:
     _apply(_render("namespace.yaml"), dry_run)
     _apply(_render("secret.yaml"), dry_run)
-    _apply(_render("configmap-haproxy.yaml"), dry_run)
     _apply(_render("configmap-fetcher-s3.yaml"), dry_run)
     _apply(_render("pvc-minio.yaml"), dry_run)
     for s in ("a", "b"):
@@ -438,6 +692,7 @@ def _apply_manifests(dry_run: bool) -> None:
         _apply(_render("deploy-node.yaml", _node_vars(s)), dry_run)
     for s in ROUTER_SUFFIXES:
         _apply(_render("deploy-router.yaml", _router_vars(s)), dry_run)
+    _apply(_render("ns-lb-edge.yaml"), dry_run)
     _apply(_render("deploy-haproxy.yaml"), dry_run)
     _apply(_render("svc-minio.yaml"), dry_run)
     for s in ("a", "b"):
@@ -450,11 +705,17 @@ def _apply_manifests(dry_run: bool) -> None:
     _apply(_render("svc-haproxy.yaml"), dry_run)
 
 
+def _wait_lb_edge_rollout(dry_run: bool) -> None:
+    _wait_rollout("monofs-haproxy", dry_run, LB_NAMESPACE)
+
+
 def deploy(dry_run: bool) -> None:
     info(f"=== deploying storage to namespace {NAMESPACE} ===")
     _apply_manifests(dry_run)
     _wait_rollouts(dry_run)
+    _wait_lb_edge_rollout(dry_run)
     _reconfigure_router_external_addresses(dry_run)
+    ensure_local_port_forward(dry_run)
 
 
 def _wait_rollouts(dry_run: bool, deployments: list[str] | None = None) -> None:
@@ -491,11 +752,19 @@ def rollout(dry_run: bool) -> None:
         check=False,
         dry_run=dry_run,
     )
+    run(
+        ["kubectl", "-n", LB_NAMESPACE, "rollout", "restart", "deployment"],
+        check=False,
+        dry_run=dry_run,
+    )
     _wait_rollouts(dry_run)
+    _wait_lb_edge_rollout(dry_run)
     _reconfigure_router_external_addresses(dry_run)
+    ensure_local_port_forward(dry_run)
 
 
 def stop(dry_run: bool) -> None:
+    stop_local_port_forward(dry_run)
     run(
         ["kubectl", "-n", NAMESPACE, "scale", "deployment", "--all", "--replicas=0"],
         check=False,
@@ -540,6 +809,7 @@ def _clear_service_finalizers(dry_run: bool) -> None:
 
 
 def destroy(dry_run: bool) -> None:
+    stop_local_port_forward(dry_run)
     _clear_service_finalizers(dry_run)
     run(
         [

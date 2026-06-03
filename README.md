@@ -2,228 +2,264 @@
 
 > Part of the **Strata** platform.
 
-`stratatools` is the single entry point for local Strata bring-up and release.
+Toolkit for building and deploying the whole ainfra (Strata) system. Provides:
 
-- `st-setup` clones sibling repos and verifies local prerequisites
-- `st-bootstrap` builds local CLIs, deploys bootstrap MonoFS + Guardian, and can start local devdns
-- `st-release` builds, stamps, and reconciles partitions
-- `st-image` builds or distributes partition images directly
-- `st-aws-setup` provisions optional AWS bootstrap prerequisites
+- `st-setup`     — clone required repos, verify kubernetes/docker readiness, and create a local kind cluster when none is reachable
+- `st-aws-setup` — provision IAM Roles Anywhere + CloudFormation deploy IAM roles for AWS pusher runners
+- `st-bootstrap` — phase 1 (storage) + phase 2 (Guardian) cluster bootstrap and install local CLIs into `~/bin`
+- `st-image`     — build / push / stamp partition images
+- `st-release`   — one-shot release pipeline (build → push → stamp → guardianctl)
 
-## Quick Start
-
-Use this for a fresh machine with Docker, kubectl, Go, Python, and a working Kubernetes context.
+## Install
 
 ```bash
-git clone <your-stratatools-repo-url>
-cd stratatools
 uv sync
-uv run st-setup
+```
 
-# optional local overrides
-# cp bootstrap.local.env.example bootstrap.local.env
+## What It Does
 
-# optional AWS bootstrap prerequisites
-# aws configure sso --profile admin-prod
-# aws sso login --profile admin-prod
-# uv run st-aws-setup --aws-profile admin-prod --aws-default-region us-east-1
+The intended workflow is to clone only `stratatools`, then let the CLI pull in
+the sibling Strata repositories and drive the platform bring-up in a few
+commands:
 
+1. `st-setup` clones `guardian`, `doctor`, `monofs`, `kvs`, and the other
+   sibling repos beside `stratatools`, ensures a shared `../monofs/.env` with
+   `MONOFS_ENCRYPTION_KEY`, and auto-creates or reuses a local `kind` cluster
+   named `strata` with three workers when no cluster is reachable.
+2. `st-bootstrap` builds the host CLIs, builds the bootstrap MonoFS and
+   Guardian images, and deploys the bootstrap control plane using that same
+   MonoFS encryption key.
+3. `st-release --all --bump` builds, distributes, stamps, and reconciles all
+   managed partitions.
+
+### Optional AWS Setup
+
+If you run the AWS pusher flow, bootstrap AWS prerequisites with:
+
+```bash
+uv run st-aws-setup --aws-profile admin-prod --aws-default-region us-east-1
+```
+
+`admin-prod` is an AWS CLI profile name from `~/.aws/config`.
+In most org setups this is an AWS IAM Identity Center (SSO) profile.
+
+Typical setup:
+
+```bash
+aws configure sso --profile admin-prod
+aws sso login --profile admin-prod
+```
+
+Then run `st-aws-setup` with that profile.
+If you use environment credentials instead of profiles, you can omit
+`--aws-profile` and keep only `--aws-default-region`.
+
+AWS CLI SSO/profile docs:
+https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html
+
+To keep private AWS account details out of git, put AWS bootstrap overrides in
+`bootstrap.local.env`:
+
+```bash
+cp bootstrap.local.env.example bootstrap.local.env
+# edit bootstrap.local.env
 uv run st-bootstrap deploy
-
-# if you want full .strata DNS for local hostnames like http://doctor.strata/
-# uv run st-bootstrap deploy --dns
-
-uv run st-release --all --bump --wait
 ```
 
-What that does:
+`bootstrap.local.env` is git-ignored and is auto-loaded by `st-bootstrap`
+commands (`build`, `deploy`, `rollout`, `stamp-urls`).
 
-1. `st-setup` clones sibling repos beside `stratatools` and seeds `../monofs/.env` with `MONOFS_ENCRYPTION_KEY`.
-2. `st-bootstrap deploy` builds local CLIs into `~/bin`, deploys bootstrap MonoFS + Guardian, and stamps current bootstrap URLs into checked-in partition config.
-3. `st-release --all --bump --wait` builds, distributes, stamps, pushes, and reconciles all managed partitions.
+AWS pusher deployment is opt-in: it is deployed only when
+# stratatools
 
-## Common Commands
+> Part of the **Strata** platform.
 
-Rebuild bootstrap binaries and images only:
+Toolkit for building and deploying the whole ainfra (Strata) system.
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `st-setup` | Clone sibling repos, check prerequisites, auto-create a kind cluster |
+| `st-bootstrap build` | Build local CLI binaries + MonoFS/Guardian container images |
+| `st-bootstrap deploy` | Build + deploy MonoFS storage and Guardian control plane |
+| `st-bootstrap rollout` | Rebuild images and restart existing deployments |
+| `st-bootstrap stamp-urls` | Resolve live endpoints and stamp them into partition configs |
+| `st-bootstrap stop` | Scale all bootstrap deployments to zero |
+| `st-bootstrap destroy` | Delete Guardian and storage namespaces |
+| `st-release` | Build → push → stamp → push to Guardian for one or more partitions |
+| `st-image` | Build / push / stamp partition images individually |
+| `st-dogfood` | Ingest local Strata repositories into the running MonoFS cluster |
+| `st-aws-setup` | Provision IAM Roles Anywhere + CloudFormation roles for AWS pusher |
+
+## Prerequisites
+
+- Docker
+- Go (for building host binaries)
+- `kubectl` + `kind` (for local Kubernetes cluster)
+- `uv` (Python package manager)
+
+Install the Python environment:
 
 ```bash
-uv run st-bootstrap build
+uv sync
 ```
 
-Rebuild bootstrap binaries/images and local devdns binaries:
+`st-bootstrap build|deploy|rollout` also builds and installs these host binaries
+into `~/bin`:
+
+- `guardianctl`
+- `monofs-client`
+- `monofs-session`
+- `monofs-search`
+
+## Step-by-Step Deployment
+
+### 1. Clone sibling repos and verify prerequisites
 
 ```bash
-uv run st-bootstrap build --dns
+uv run st-setup
 ```
 
-Refresh stamped URLs after bootstrap endpoints change:
+This clones `guardian`, `doctor`, `monofs`, `kvs`, `k8s-top`, `agent`,
+`packager`, and `cfg` as siblings of the `stratatools` directory, checks that
+Docker / Go / kubectl / kind are installed, seeds `../monofs/.env` with a new
+`MONOFS_ENCRYPTION_KEY` if one does not exist, and auto-creates a local kind
+cluster named `strata` (3 workers) when no Kubernetes cluster is reachable.
+
+### 2. (Optional) Set local overrides
 
 ```bash
-uv run st-bootstrap stamp-urls
+cp bootstrap.local.env.example bootstrap.local.env
+# edit bootstrap.local.env
 ```
 
-Restart bootstrap workloads:
+`bootstrap.local.env` is git-ignored and auto-loaded by every `st-bootstrap`
+command. Common overrides:
+
+| Variable | Purpose |
+|---|---|
+| `GUARDIAN_AWS_ACCOUNT` | Enable AWS pusher deployment (opt-in) |
+| `MONOFS_PORT_FORWARD_ADDRESS` | Bind address for the managed port-forward (default: `0.0.0.0`; set to `127.0.0.1` for loopback-only) |
+| `GUARDIAN_UI_PORT` | Guardian UI port (default: `8090`) |
+| `EXTERNAL_SERVICE_TYPE` | Kubernetes service type for external services (default: `LoadBalancer`) |
+
+### 3. (Optional) Set up AWS prerequisites
+
+Skip this step if you only need a local Kubernetes deployment.
 
 ```bash
-uv run st-bootstrap rollout
+# authenticate with AWS SSO
+aws configure sso --profile admin-prod
+aws sso login --profile admin-prod
+
+# provision IAM Roles Anywhere and CloudFormation roles
+uv run st-aws-setup --aws-profile admin-prod --aws-default-region us-east-1
 ```
 
-Restart bootstrap workloads and resync local devdns routes:
+If you use environment credentials instead of a profile, omit `--aws-profile`.
+
+### 4. Deploy the bootstrap control plane
 
 ```bash
-uv run st-bootstrap rollout --dns
+uv run st-bootstrap deploy
 ```
 
-Release a single partition:
+This builds the host CLIs (`guardianctl`, `monofs-*`) into `~/bin`, builds the
+MonoFS and Guardian container images, loads them into the kind cluster, deploys
+MonoFS storage and the Guardian control plane, and stamps external endpoints
+into the partition configs.
+
+After deploy completes, all services are accessible through the single lb-edge
+(`monofs-haproxy`) managed port-forward, which binds `0.0.0.0` so it is
+reachable from both `localhost` and the host's LAN IP (e.g. `172.21.63.46` on
+WSL2 `eth0`):
+
+| Service | URL | Protocol |
+|---|---|---|
+| MonoFS HTTP UI / API | `http://<host>:8080/` | HTTP |
+| MonoFS gRPC API | `<host>:9090` | gRPC |
+| Guardian UI | `http://<host>:8090/` | HTTP |
+
+`stamp-urls` automatically detects the host IP and writes it into the
+`guardian-configs` and `doctor` partition configs so `guardianctl` and
+in-cluster services resolve the correct endpoint without further manual
+configuration.
+
+To override the bind address set `MONOFS_PORT_FORWARD_ADDRESS` in
+`bootstrap.local.env` (e.g. `127.0.0.1` for loopback-only).
+
+### 5. Release partitions
 
 ```bash
-uv run st-release --partition doctor --bump --wait
+uv run st-release --all --bump
 ```
 
-Run the local dogfood ingest flow:
+This builds, pushes (or cluster-loads on kind), stamps, and pushes each
+partition to Guardian. Use `--wait` to block until all partitions converge.
+
+Managed partitions: `agent`, `dev-workspace`, `doctor`, `guardian-configs`,
+`k8s-top`, `lolipop`, `monitoring`, `opentelemetry`.
+
+To release a subset:
+
+```bash
+uv run st-release -p doctor -p monitoring --bump --wait
+```
+
+> **Note:** `lolipop` requires a CUDA-capable GPU and custom images not built
+> by stratatools. Skip it on CPU-only or kind clusters by releasing other
+> partitions explicitly with `-p`.
+
+### 6. Ingest repositories into MonoFS (optional)
 
 ```bash
 uv run st-dogfood --router localhost:9090
 ```
 
-## Local DNS
+Ingests the local Strata repositories into the running MonoFS cluster.
+`MONOFS_ENCRYPTION_KEY` must match the key used at bootstrap (it is
+automatically read from `../monofs/.env`).
 
-If you run bootstrap with `--dns`, `stratatools` also builds `devdns` and `devdnsctl`, starts local devdns, and keeps declared `DevDNSRoute` assets synced through local `kubectl port-forward` processes.
+## Rebuilding After Changes
 
-Bootstrap tries `127.0.0.1:80` first. If that bind is not allowed, it falls back to `127.0.0.1:18080` automatically.
-
-Refresh DNS-backed stamped URLs with:
-
-```bash
-uv run st-bootstrap stamp-urls --dns
-```
-
-Current hostname exposed this way:
-
-- Doctor query UI: `http://doctor.strata/`
-
-If you want `doctor.strata` to work from any machine on your local network, do not point each machine at its own loopback address. Run `devdns` on one reachable LAN host and point clients or your router at that host.
-
-### LAN Host
-
-Pick one machine on your LAN to be the shared DNS/proxy host. Native Linux or native Windows is the right choice. WSL is not a good default for a LAN-wide server because WSL2 is usually NATed.
-
-Assume this host has LAN IP `192.168.1.50`. Configure bootstrap like this:
+To rebuild images and roll out without redeploying the full stack:
 
 ```bash
-cp bootstrap.local.env.example bootstrap.local.env
-printf '\nDEVDNS_SERVER_IP=192.168.1.50\nDEVDNS_DNS_ADDR=0.0.0.0:53\nDEVDNS_PROXY_ADDR=0.0.0.0:80\n' >> bootstrap.local.env
-uv run st-bootstrap build --dns
-uv run st-bootstrap deploy --dns
-uv run st-bootstrap stamp-urls --dns
+uv run st-bootstrap rollout
 ```
 
-On Linux, allow the binary to bind low ports:
+To refresh external endpoint stamps in partition configs:
 
 ```bash
-sudo setcap cap_net_bind_service=+ep "$HOME/bin/devdns"
+uv run st-bootstrap stamp-urls
 ```
 
-Run `setcap` again after each rebuild of `~/bin/devdns`, because rebuilding the binary can clear the capability.
-
-If the host has multiple private interfaces or bootstrap picks the wrong address, keep `DEVDNS_SERVER_IP` set explicitly to the LAN IP you want clients to use.
-
-If you cannot bind port `80`, set `DEVDNS_PROXY_ADDR` to a high port instead. DNS will still resolve, but clients will need `http://doctor.strata:<port>/`.
-
-### Router Or DHCP
-
-This is the best way to make `doctor.strata` work from anywhere on the LAN.
-
-Set your router or DHCP server to advertise the LAN host IP as the DNS server, for example `192.168.1.50`. After that, reconnect clients or renew their DHCP lease so they pick up the new DNS server.
-
-### Linux Client
-
-If you are not changing router DHCP, point the Linux client at the LAN host DNS server directly.
-
-With `systemd-resolved`, the usual shape is:
+## Teardown
 
 ```bash
-sudo resolvectl dns <iface> 192.168.1.50
-sudo resolvectl domain <iface> '~strata'
+# scale everything to zero (keeps cluster state)
+uv run st-bootstrap stop
+
+# delete all namespaces and resources
+uv run st-bootstrap destroy
 ```
 
-Example:
+## Encryption Key
 
-```bash
-sudo resolvectl dns enp3s0 192.168.1.50
-sudo resolvectl domain enp3s0 '~strata'
-resolvectl query doctor.strata
-```
+`MONOFS_ENCRYPTION_KEY` is seeded into `../monofs/.env` by `st-setup` and
+reused by all subsequent commands. Do not rotate this key after MonoFS has
+ingested data — existing blob archives will become unreadable until they are
+re-ingested.
 
-If your distro does not use `systemd-resolved`, configure the active network connection in NetworkManager or your distro resolver to use `192.168.1.50` as DNS.
+## Local Dev Workspace
 
-NetworkManager example:
+After `dev-workspace` is released, these entry points become available:
 
-```bash
-nmcli connection show
-sudo nmcli connection modify "Wired connection 1" ipv4.ignore-auto-dns yes ipv4.dns "192.168.1.50"
-sudo nmcli connection up "Wired connection 1"
-getent hosts doctor.strata
-```
+- **OpenVSCode** — `http://localhost:8888/`
+- **SSH** — `ssh developer@localhost -p 2222`
 
-### Windows Client
+SSH access requires a public key in the `ssh-authorized-keys` config for the
+`dev-workspace` partition.
 
-If you are not changing router DHCP, point the Windows adapter DNS server at the LAN host:
-
-```powershell
-Set-DnsClientServerAddress -InterfaceAlias "Wi-Fi" -ServerAddresses 192.168.1.50
-```
-
-Use the correct interface alias for your machine, for example `Ethernet` instead of `Wi-Fi`.
-
-Example:
-
-```powershell
-Get-DnsClient | Select-Object InterfaceAlias,InterfaceIndex
-Set-DnsClientServerAddress -InterfaceAlias "Wi-Fi" -ServerAddresses 192.168.1.50
-ipconfig /flushdns
-Resolve-DnsName doctor.strata
-```
-
-To switch the adapter back to DHCP-provided DNS later:
-
-```powershell
-Set-DnsClientServerAddress -InterfaceAlias "Wi-Fi" -ResetServerAddresses
-```
-
-### WSL Client
-
-For WSL to use the LAN host DNS server, stop WSL from regenerating `resolv.conf` and write the LAN DNS server explicitly:
-
-```bash
-cat <<'EOF' | sudo tee /etc/wsl.conf
-[network]
-generateResolvConf=false
-EOF
-printf 'nameserver 192.168.1.50\n' | sudo tee /etc/resolv.conf
-```
-
-Then restart WSL from Windows:
-
-```powershell
-wsl --shutdown
-```
-
-### WSL As The Server
-
-If the Strata stack runs inside WSL and you want other LAN devices to reach `doctor.strata`, do not use the default WSL networking as your LAN-wide server path. Use one of these instead:
-
-- run `devdns` natively on Windows
-- run `devdns` on a native Linux host
-- use WSL mirrored networking or explicit Windows port proxy and firewall rules for UDP `53` and TCP `80`
-
-## Notes
-
-- `bootstrap.local.env` is git-ignored and auto-loaded by `st-bootstrap build`, `deploy`, `rollout`, and `stamp-urls`.
-- AWS pusher deployment is opt-in and only happens when `GUARDIAN_AWS_ACCOUNT` is set.
-- Keep the same `MONOFS_ENCRYPTION_KEY` after MonoFS has ingested data. Rotating it later can make existing blobs unreadable until they are re-ingested.
-- `st-dogfood` excludes `agent` from the default ingest set.
-- After `dev-workspace` is released locally, the intended endpoints are `http://localhost:8888/` and `ssh developer@localhost -p 2222`.
-- SSH access still requires your public key in the `ssh-authorized-keys` config for the `dev-workspace` partition.
-
-See [docs/USAGE.md](docs/USAGE.md) for the fuller command reference.
+See [docs/USAGE.md](docs/USAGE.md) for further detail.

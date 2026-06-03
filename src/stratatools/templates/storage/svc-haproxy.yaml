@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: monofs-external
-  namespace: ${NAMESPACE}
+  namespace: ${LB_NAMESPACE}
 spec:
   type: ${EXTERNAL_SERVICE_TYPE}
   selector:
@@ -14,3 +14,9 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
+    - name: guardian-ui
+      port: 8090
+      targetPort: 8090
+    - name: admin
+      port: 18081
+      targetPort: 18081

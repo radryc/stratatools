@@ -19,11 +19,14 @@ spec:
       containers:
         - name: pusher
           image: ${GUARDIAN_PUSHER_IMAGE}
+          imagePullPolicy: ${GUARDIAN_IMAGE_PULL_POLICY}
           env:
             - name: GUARDIAN_PUSHER_NAME
               value: "${GUARDIAN_PUSHER_NAME}"
             - name: GUARDIAN_CLUSTER
               value: "${GUARDIAN_CLUSTER}"
+            - name: GUARDIAN_LB_IMAGE
+              value: "${GUARDIAN_LB_IMAGE}"
             - name: GUARDIAN_MONOFS_ROUTER
               value: "${GUARDIAN_MONOFS_ROUTER}"
             - name: GUARDIAN_MONOFS_TOKEN

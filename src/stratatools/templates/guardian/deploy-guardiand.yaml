@@ -19,6 +19,7 @@ spec:
       containers:
         - name: guardiand
           image: ${GUARDIAN_IMAGE}
+          imagePullPolicy: ${GUARDIAN_IMAGE_PULL_POLICY}
           env:
             - name: GUARDIAN_MONOFS_ROUTER
               value: "${GUARDIAN_MONOFS_ROUTER}"
