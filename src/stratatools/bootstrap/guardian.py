@@ -16,6 +16,7 @@ from stratatools.util import info, warn, run, TEMPLATES, PARTITIONS
 
 NAMESPACE = os.environ.get("GUARDIAN_NAMESPACE", "guardian")
 STORAGE_NAMESPACE = os.environ.get("MONOFS_NAMESPACE", "monofs")
+LB_NAMESPACE = os.environ.get("LB_NAMESPACE", "lb-edge")
 EXTERNAL_SERVICE_TYPE = os.environ.get("EXTERNAL_SERVICE_TYPE", "LoadBalancer")
 GUARDIAN_IMAGE = os.environ.get("GUARDIAN_IMAGE", "guardian:latest")
 GUARDIAN_IMAGE_PULL_POLICY = os.environ.get("GUARDIAN_IMAGE_PULL_POLICY", "IfNotPresent")
@@ -28,7 +29,7 @@ GUARDIAN_PUSHER_AWS_IMAGE = os.environ.get(
 GUARDIAN_LB_IMAGE = os.environ.get("GUARDIAN_LB_IMAGE", "lb:latest")
 GUARDIAN_MONOFS_ROUTER = os.environ.get(
     "GUARDIAN_MONOFS_ROUTER",
-    f"monofs-external.{STORAGE_NAMESPACE}.svc.cluster.local:9090",
+    f"monofs-external.{LB_NAMESPACE}.svc.cluster.local:9090",
 )
 GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES = os.environ.get(
     "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES", "false"
@@ -598,20 +599,13 @@ def stamp_urls(dry_run: bool) -> None:
     _set_top_key(gcfg, "guardian_ui_base_url", url)
     _set_env_in_intent(dq, "GUARDIAN_UI_BASE_URL", url)
 
+    # This is the endpoint guardianctl (running outside the cluster) uses to
+    # reach MonoFS gRPC — it goes through lb-edge on the host IP.
+    # guardiand itself uses GUARDIAN_MONOFS_ROUTER (in-cluster svc) and must
+    # NOT be patched with the host IP or it will fail DNS resolution.
     monofs_grpc_endpoint = f"{host}:9090"
     info(f"guardian MonoFS client API endpoint (via lb-edge): {monofs_grpc_endpoint}")
     _set_env_in_intent(gcp, "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", monofs_grpc_endpoint)
-
-    # Patch the live deployment immediately so guardianctl can connect without
-    # waiting for a full intent push/reconcile cycle.
-    run(
-        [
-            "kubectl", "-n", NAMESPACE, "set", "env", "deployment/guardiand",
-            f"GUARDIAN_MONOFS_CLIENT_API_ENDPOINT={monofs_grpc_endpoint}",
-        ],
-        check=False,
-        dry_run=False,
-    )
 
     dip = _svc_ip(NAMESPACE, "doctor-query-external")
     if dip:
