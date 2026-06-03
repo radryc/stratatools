@@ -9,6 +9,7 @@ import signal
 import socket
 import subprocess
 import time
+import urllib.request
 from pathlib import Path
 from string import Template
 
@@ -591,6 +592,21 @@ def _is_wsl() -> bool:
         return False
 
 
+def _lb_edge_registered_ports() -> list[int]:
+    """Query lb-edge registry and return all registered external ports.
+
+    Used to make the port-forward cover every port lb-edge is serving.
+    Returns empty list if lb-edge isn't reachable yet.
+    """
+    try:
+        url = f"http://127.0.0.1:{LB_LOCAL_ADMIN_PORT}/services"
+        with urllib.request.urlopen(url, timeout=2) as r:
+            data = json.loads(r.read())
+        return sorted({int(s["external_port"]) for s in data.get("services", [])})
+    except Exception:
+        return []
+
+
 def _local_port_forward_address() -> str:
     configured = os.environ.get("MONOFS_PORT_FORWARD_ADDRESS", "").strip()
     if configured:
@@ -622,9 +638,10 @@ def _local_port_forward_command() -> list[str]:
     address = _local_port_forward_address()
     if address:
         command.extend(["--address", address])
-    command.extend(
+
+    # Static ports always forwarded.
+    static_ports = (
         [
-            "svc/monofs-external",
             f"{MONOFS_LOCAL_HTTP_PORT}:8080",
             f"{MONOFS_LOCAL_GRPC_PORT}:9090",
             f"{GUARDIAN_LOCAL_UI_PORT}:8090",
@@ -633,6 +650,20 @@ def _local_port_forward_command() -> list[str]:
         + [f"{_node_external_port(n)}:{_node_external_port(n)}" for n in NODE_NAMES]
         + [f"{p}:{p}" for p in LB_USER_SERVICE_PORTS]
     )
+    static_port_nums = {
+        8080, 9090, 8090, 18081,
+        *{int(_node_external_port(n)) for n in NODE_NAMES},
+        *LB_USER_SERVICE_PORTS,
+    }
+
+    # Dynamic: any ports registered in lb-edge that aren't already covered.
+    dynamic_ports = [
+        f"{p}:{p}"
+        for p in _lb_edge_registered_ports()
+        if p not in static_port_nums
+    ]
+
+    command.extend(["svc/monofs-external"] + static_ports + dynamic_ports)
     return command
 
 
@@ -830,7 +861,9 @@ def _apply_manifests(dry_run: bool) -> None:
         _apply(_render("deploy-router.yaml", _router_vars(s)), dry_run)
     _apply(_render("ns-lb-edge.yaml"), dry_run)
     _apply(_render("rbac-lb-agent.yaml"), dry_run)
+    _apply(_render("configmap-lb-port-sync.yaml"), dry_run)
     _apply(_render("deploy-lb-k8s-agent.yaml"), dry_run)
+    _apply(_render("deploy-lb-port-sync.yaml"), dry_run)
     _apply(_render("deploy-haproxy.yaml"), dry_run)
     _apply(_render("svc-minio.yaml"), dry_run)
     for s in ("a", "b"):

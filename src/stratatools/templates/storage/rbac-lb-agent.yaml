@@ -13,6 +13,32 @@ rules:
     resources: ["endpoints", "services"]
     verbs: ["get", "list", "watch"]
 ---
+# Allows lb-port-sync (using the lb-k8s-agent SA) to patch the monofs-external
+# Service in lb-edge when new ports register dynamically.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lb-port-sync
+  namespace: ${LB_NAMESPACE}
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lb-port-sync
+  namespace: ${LB_NAMESPACE}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lb-port-sync
+subjects:
+  - kind: ServiceAccount
+    name: lb-k8s-agent
+    namespace: ${LB_NAMESPACE}
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:

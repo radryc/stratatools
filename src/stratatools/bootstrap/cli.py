@@ -297,3 +297,22 @@ def stamp_urls(dry_run: bool = typer.Option(False, "--dry-run")) -> None:
     _load_bootstrap_env()
     _reload_bootstrap_modules()
     guardian.stamp_urls(dry_run)
+
+
+@app.command("watch-pf")
+def watch_pf(
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    interval: int = typer.Option(30, "--interval", help="Seconds between registry checks"),
+) -> None:
+    """Watch lb-edge registry and auto-restart port-forward when new ports appear.
+
+    Run this once after bootstrap to keep port-forward current as guardian
+    partitions deploy and register new services (grafana, doctor, otel, etc.).
+    """
+    _load_bootstrap_env()
+    _reload_bootstrap_modules()
+    import time as _time
+    info(f"watching lb-edge registry every {interval}s, auto-restarting port-forward on new ports...")
+    while True:
+        storage.ensure_local_port_forward(dry_run)
+        _time.sleep(interval)

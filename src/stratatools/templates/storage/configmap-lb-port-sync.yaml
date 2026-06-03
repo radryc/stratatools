@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lb-port-sync
+  namespace: ${LB_NAMESPACE}
+data:
+  sync.py: |
+    #!/usr/bin/env python3
+    """lb-port-sync: keep monofs-external Service ports in sync with lb-edge registry."""
+    import json, os, ssl, time, urllib.request
+
+    NAMESPACE    = os.environ.get("LB_NAMESPACE", "lb-edge")
+    SVC_NAME     = os.environ.get("LB_SERVICE_NAME", "monofs-external")
+    REGISTRY_URL = f"http://monofs-external.{NAMESPACE}.svc.cluster.local:18081/services"
+    INTERVAL     = int(os.environ.get("SYNC_INTERVAL", "10"))
+    K8S_API      = "https://kubernetes.default.svc.cluster.local"
+    SA_DIR       = "/var/run/secrets/kubernetes.io/serviceaccount"
+
+    def _token():
+        return open(f"{SA_DIR}/token").read().strip()
+
+    def _ctx():
+        c = ssl.create_default_context(cafile=f"{SA_DIR}/ca.crt")
+        return c
+
+    def _k8s(path, method="GET", body=None, content_type=None):
+        headers = {"Authorization": f"Bearer {_token()}"}
+        if content_type:
+            headers["Content-Type"] = content_type
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(f"{K8S_API}{path}", data=data, method=method, headers=headers)
+        with urllib.request.urlopen(req, context=_ctx(), timeout=10) as r:
+            return json.loads(r.read())
+
+    def _registry_ports():
+        try:
+            with urllib.request.urlopen(REGISTRY_URL, timeout=5) as r:
+                return {int(s["external_port"]) for s in json.loads(r.read()).get("services", [])}
+        except Exception as e:
+            print(f"[lb-port-sync] registry error: {e}", flush=True)
+            return set()
+
+    def sync():
+        registry_ports = _registry_ports()
+        if not registry_ports:
+            return
+        svc = _k8s(f"/api/v1/namespaces/{NAMESPACE}/services/{SVC_NAME}")
+        svc_ports = {int(p["port"]) for p in svc.get("spec", {}).get("ports", [])}
+        new_ports = sorted(registry_ports - svc_ports)
+        if not new_ports:
+            return
+        ports = list(svc["spec"]["ports"])
+        for port in new_ports:
+            ports.append({"name": f"dyn-{port}", "port": port, "targetPort": port, "protocol": "TCP"})
+            print(f"[lb-port-sync] adding port {port}", flush=True)
+        _k8s(
+            f"/api/v1/namespaces/{NAMESPACE}/services/{SVC_NAME}",
+            method="PATCH",
+            body={"spec": {"ports": ports}},
+            content_type="application/strategic-merge-patch+json",
+        )
+        print(f"[lb-port-sync] patched {SVC_NAME}: added {new_ports}", flush=True)
+
+    print(f"[lb-port-sync] starting, namespace={NAMESPACE}, svc={SVC_NAME}", flush=True)
+    while True:
+        try:
+            sync()
+        except Exception as e:
+            print(f"[lb-port-sync] error: {e}", flush=True)
+        time.sleep(INTERVAL)

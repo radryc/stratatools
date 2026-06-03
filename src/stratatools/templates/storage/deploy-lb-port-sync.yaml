@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lb-port-sync
+  namespace: ${LB_NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lb-port-sync
+  template:
+    metadata:
+      labels:
+        app: lb-port-sync
+    spec:
+      serviceAccountName: lb-k8s-agent
+      containers:
+        - name: sync
+          image: python:3.11-alpine
+          imagePullPolicy: IfNotPresent
+          command: [python3, /scripts/sync.py]
+          env:
+            - name: LB_NAMESPACE
+              value: "${LB_NAMESPACE}"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: lb-port-sync
