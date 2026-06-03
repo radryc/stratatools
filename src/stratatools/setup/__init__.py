@@ -182,14 +182,21 @@ def _kind_binary() -> str | None:
 
 
 def _kind_config(worker_count: int) -> str:
+    node_extra = (
+        "    extraMounts:\n"
+        "    - hostPath: /var/run/docker.sock\n"
+        "      containerPath: /var/run/docker.sock\n"
+    )
     lines = [
         "kind: Cluster",
         "apiVersion: kind.x-k8s.io/v1alpha4",
         "nodes:",
         "  - role: control-plane",
     ]
+    lines.append(node_extra.rstrip())
     for _ in range(worker_count):
         lines.append("  - role: worker")
+        lines.append(node_extra.rstrip())
     return "\n".join(lines) + "\n"
 
 
