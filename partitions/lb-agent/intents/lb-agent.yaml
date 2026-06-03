@@ -1,0 +1,27 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+  name: lb-agent
+spec:
+  intentType: standard
+  targetPusher: k8s-main
+  target:
+    cluster: k8s-main
+    namespace: lb-edge
+  locked: false
+  assets:
+  - type: Compute
+    name: lb-k8s-agent
+    version: 20260603-1200
+    payload:
+      k8s: /partitions/lb-agent/payloads/k8s-agent.k8s.yaml
+    properties:
+      image: lb:sha256-8be5dd53984da3f3
+      imagePullPolicy: IfNotPresent
+      resources:
+        limits:
+          cpu: 200m
+          memory: 128Mi
+        requests:
+          cpu: 50m
+          memory: 64Mi

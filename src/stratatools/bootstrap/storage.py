@@ -704,6 +704,7 @@ def _apply_manifests(dry_run: bool) -> None:
     for s in ROUTER_SUFFIXES:
         _apply(_render("deploy-router.yaml", _router_vars(s)), dry_run)
     _apply(_render("ns-lb-edge.yaml"), dry_run)
+    _apply(_render("rbac-lb-agent.yaml"), dry_run)
     _apply(_render("deploy-haproxy.yaml"), dry_run)
     _apply(_render("svc-minio.yaml"), dry_run)
     for s in ("a", "b"):

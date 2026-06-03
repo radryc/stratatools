@@ -28,7 +28,7 @@ LB_REPO_DIR = Path(os.environ.get("LB_REPO_DIR", AINFRA / "lb"))
 
 PARTITIONS_LIST: list[str] = [
     "guardian-configs", "opentelemetry", "k8s-top",
-    "doctor", "monitoring", "dev-workspace", "agent",
+    "doctor", "monitoring", "dev-workspace", "agent", "lb-agent",
 ]
 
 # Each recipe: (image_tag, extra_docker_build_args, build_context_dir)
@@ -66,6 +66,9 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
          DOCTOR_REPO_DIR),
     ],
     "monitoring": [
+        ("lb:latest", [], LB_REPO_DIR),
+    ],
+    "lb-agent": [
         ("lb:latest", [], LB_REPO_DIR),
     ],
     "dev-workspace": [

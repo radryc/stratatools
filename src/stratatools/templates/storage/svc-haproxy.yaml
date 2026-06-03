@@ -20,3 +20,6 @@ spec:
     - name: admin
       port: 18081
       targetPort: 18081
+    - name: registry-grpc
+      port: 15051
+      targetPort: 15051
