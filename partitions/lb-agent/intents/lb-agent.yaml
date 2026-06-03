@@ -1,3 +1,19 @@
+# This partition deploys the lb k8s-agent into the lb-edge namespace.
+# It watches all namespaces for K8s services annotated with
+# guardian.intent/expose: "true" and auto-registers them with the main lb-edge
+# registry gRPC on monofs-external.lb-edge.svc.cluster.local:15051.
+#
+# Current model (Option A - two-hop):
+#   user → main lb-edge :PORT → per-partition lb-edge pod → target pod
+#   LoadBalancer assets carry serviceAnnotations so k8s-agent picks them up.
+#
+# TODO(option-b - single-hop):
+#   Remove per-partition LoadBalancer assets (grafana-edge, doctor-edge, etc.).
+#   Add serviceAnnotations directly to the Compute asset payload instead:
+#     serviceAnnotations:
+#       guardian.intent/expose: "true"
+#       guardian.intent/external-port: "3000"
+#   k8s-agent then registers the Compute pod IPs directly — no intermediate hop.
 apiVersion: guardian/v1alpha1
 kind: Intent
 metadata:
