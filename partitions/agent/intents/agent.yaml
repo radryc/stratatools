@@ -12,19 +12,19 @@ spec:
     assets:
         - type: Volume
           name: llm-models
-          version: 20260603-1604
+          version: 20260603-1652
           properties:
             accessMode: ReadWriteOnce
             size: 20Gi
         - type: Volume
           name: lagent-data
-          version: 20260603-1604
+          version: 20260603-1652
           properties:
             accessMode: ReadWriteOnce
             size: 5Gi
         - type: Compute
           name: lagent-llm
-          version: 20260603-1604
+          version: 20260603-1652
           dependsOn:
             - llm-models
           payload:
@@ -57,7 +57,7 @@ spec:
                   volume: llm-models
         - type: Compute
           name: lagent-backend
-          version: 20260603-1604
+          version: 20260603-1652
           dependsOn:
             - lagent-llm
             - lagent-data
@@ -93,7 +93,7 @@ spec:
                   volume: lagent-data
         - type: Compute
           name: lagent-frontend
-          version: 20260603-1604
+          version: 20260603-1652
           dependsOn:
             - lagent-backend
           payload:

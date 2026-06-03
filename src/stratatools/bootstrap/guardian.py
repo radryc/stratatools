@@ -769,7 +769,7 @@ def stamp_urls(dry_run: bool) -> None:
     # NOT be patched with the host IP or it will fail DNS resolution.
     monofs_grpc_endpoint = f"{host}:9090"
     info(f"guardian MonoFS client API endpoint (via lb-edge): {monofs_grpc_endpoint}")
-    _set_env_in_intent(gcp, "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", monofs_grpc_endpoint)
+    _set_dict_env_in_intent(gcp, "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", monofs_grpc_endpoint)
 
     # The docker pusher runs outside Kubernetes and can't use in-cluster DNS.
     # Stamp the lb-edge host IP so it can reach MonoFS directly.

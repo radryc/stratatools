@@ -12,16 +12,16 @@ spec:
     assets:
         - type: Compute
           name: guardian-control-plane
-          version: 20260603-1603
+          version: 20260603-1657
           properties:
             env:
                 GUARDIAN_CLIENT_DISCOVERY_TOKEN: guardian-dev-token
                 GUARDIAN_DEBOUNCE_MS: "250"
-                GUARDIAN_MONOFS_CLIENT_API_ENDPOINT: monofs-external.monofs.svc.cluster.local:9090
+                GUARDIAN_MONOFS_CLIENT_API_ENDPOINT: 172.18.0.4:9090
                 GUARDIAN_MONOFS_CLIENT_USE_EXTERNAL_ADDRESSES: "true"
                 GUARDIAN_MONOFS_MOUNT_PATH: /
                 GUARDIAN_MONOFS_PRINCIPAL: guardiand
-                GUARDIAN_MONOFS_ROUTER: monofs-external.monofs.svc.cluster.local:9090
+                GUARDIAN_MONOFS_ROUTER: monofs-external.lb-edge.svc.cluster.local:9090
                 GUARDIAN_MONOFS_TOKEN: guardian-dev-token
                 GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES: "false"
                 GUARDIAN_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
@@ -49,7 +49,7 @@ spec:
                     memory: 256Mi
         - type: LoadBalancer
           name: guardian-ui
-          version: 20260603-1603
+          version: 20260603-1657
           dependsOn:
             - guardian-control-plane
           properties:
@@ -61,13 +61,13 @@ spec:
                 - guardian-control-plane
         - type: Compute
           name: guardian-kubernetes-pusher
-          version: 20260603-1603
+          version: 20260603-1657
           dependsOn:
             - guardian-control-plane
           properties:
             env:
                 GUARDIAN_CLUSTER: k8s-main
-                GUARDIAN_MONOFS_ROUTER: monofs-external.monofs.svc.cluster.local:9090
+                GUARDIAN_MONOFS_ROUTER: monofs-external.lb-edge.svc.cluster.local:9090
                 GUARDIAN_MONOFS_TOKEN: guardian-dev-token
                 GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES: "false"
                 GUARDIAN_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
