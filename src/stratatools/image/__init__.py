@@ -363,6 +363,9 @@ def cmd_push(partitions: list[str], registry: str, dry_run: bool) -> None:
          f"({'cluster-load' if cluster_load else 'registry push'})")
     for part in partitions:
         info(f"[{part}] {'load' if cluster_load else 'push'}")
+        # Pull mirror images before _partition_mapping so the inspect can succeed.
+        for upstream, _local in MIRROR_RECIPES.get(part, []):
+            run(["docker", "pull", upstream], dry_run=dry_run)
         mapping = _partition_mapping(part, registry, cluster_load, dry_run)
         for tag, _e, _c in BUILD_RECIPES.get(part, []):
             target = mapping[tag]
@@ -372,7 +375,6 @@ def cmd_push(partitions: list[str], registry: str, dry_run: bool) -> None:
             else:
                 run(["docker", "push", target], dry_run=dry_run)
         for upstream, local in MIRROR_RECIPES.get(part, []):
-            run(["docker", "pull", upstream], dry_run=dry_run)
             target = mapping[upstream]
             run(["docker", "tag", upstream, target], dry_run=dry_run)
             if cluster_load:
