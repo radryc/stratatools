@@ -7,6 +7,8 @@ metadata:
     app: monofs-haproxy
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: monofs-haproxy
@@ -17,10 +19,16 @@ spec:
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
+${LB_KIND_NODE_PLACEMENT}
       containers:
         - name: lb-edge
           image: ${MONOFS_LB_IMAGE}
           imagePullPolicy: ${MONOFS_IMAGE_PULL_POLICY}
+          args:
+            - -min-external-port
+            - "${LB_DYNAMIC_PORT_MIN}"
+            - -max-external-port
+            - "${LB_DYNAMIC_PORT_MAX}"
           env:
             - name: LB_BOOTSTRAP
               value: "monofs-grpc@grpc[MonoFS gRPC API]:9090=router-a.${NAMESPACE}.svc.cluster.local:9090,router-b.${NAMESPACE}.svc.cluster.local:9090;monofs-http@http[MonoFS HTTP UI]:8080=router-a.${NAMESPACE}.svc.cluster.local:8080,router-b.${NAMESPACE}.svc.cluster.local:8080;guardian-ui@http[Guardian UI]:8090=guardian-ui.${GUARDIAN_NAMESPACE}.svc.cluster.local:${GUARDIAN_UI_PORT};${LB_NODE_BOOTSTRAP}"
