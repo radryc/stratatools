@@ -248,6 +248,37 @@ def _resolve_service_external_endpoint(
     return ""
 
 
+def _endpoint_host(endpoint: str) -> str:
+    value = endpoint.strip()
+    if not value:
+        return ""
+    if value.startswith("["):
+        close = value.find("]")
+        if close != -1:
+            return value[1:close]
+    if ":" not in value:
+        return value
+    return value.rsplit(":", 1)[0]
+
+
+def _docker_monofs_add_hosts(router_endpoint: str) -> list[str]:
+    """Return docker --add-host mappings for MonoFS node/router DNS names."""
+    host_ip = _endpoint_host(router_endpoint)
+    if not host_ip:
+        return []
+    if not re.match(r"^\d+\.\d+\.\d+\.\d+$", host_ip):
+        return []
+
+    names = [
+        "router-a.monofs.svc.cluster.local",
+        "router-b.monofs.svc.cluster.local",
+    ]
+    for node in ["a", "b", "c", "d", "e"]:
+        names.append(f"node-{node}.monofs.svc.cluster.local")
+        names.append(f"node-{node}-external.monofs.svc.cluster.local")
+    return [f"{name}:{host_ip}" for name in names]
+
+
 def _guardian_monofs_client_api_endpoint() -> str:
     configured = os.environ.get("GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", "").strip()
     if configured:
@@ -291,6 +322,7 @@ def _vars() -> dict:
         "GUARDIAN_UI_PORT": GUARDIAN_UI_PORT,
         "GUARDIAN_UI_LISTEN": GUARDIAN_UI_LISTEN,
         "GUARDIAN_UI_BASE_URL": GUARDIAN_UI_BASE_URL,
+        "GUARDIAN_CLIENT_DISCOVERY_TOKEN": cdt,
         "MONOFS_TOKEN": _b64(monofs_token),
         "CLIENT_DISCOVERY_TOKEN": _b64(cdt),
     }
@@ -369,27 +401,33 @@ def _deploy_docker_pusher(dry_run: bool) -> None:
     any Docker container on the bridge network.
     """
     info(f"=== deploying {GUARDIAN_DOCKER_PUSHER_NAME} as Docker container ===")
-    router = f"{_lb_edge_host()}:9090"
+    router = _lb_edge_endpoint("grpc", "9090") or GUARDIAN_MONOFS_ROUTER
     token = _read_monofs_token() if not dry_run else "<monofs-token>"
     if not token and not dry_run:
         warn("cannot read monofs token from guardian-secrets — docker pusher may fail to connect")
+    add_hosts = _docker_monofs_add_hosts(router)
 
-    run(["docker", "rm", "-f", _DOCKER_PUSHER_CONTAINER], check=False, dry_run=dry_run)
-    run(
+    cmd = [
+        "docker", "run", "-d",
+        "--restart=unless-stopped",
+        "--name", _DOCKER_PUSHER_CONTAINER,
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+    ]
+    for mapping in add_hosts:
+        cmd.extend(["--add-host", mapping])
+    cmd.extend(
         [
-            "docker", "run", "-d",
-            "--restart=unless-stopped",
-            "--name", _DOCKER_PUSHER_CONTAINER,
-            "-v", "/var/run/docker.sock:/var/run/docker.sock",
             "-e", f"GUARDIAN_PUSHER_NAME={GUARDIAN_DOCKER_PUSHER_NAME}",
             "-e", "GUARDIAN_CLUSTER=docker-main",
             "-e", f"GUARDIAN_MONOFS_ROUTER={router}",
             "-e", f"GUARDIAN_MONOFS_TOKEN={token}",
             "-e", "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES=true",
             GUARDIAN_DOCKER_PUSHER_IMAGE,
-        ],
-        dry_run=dry_run,
+        ]
     )
+
+    run(["docker", "rm", "-f", _DOCKER_PUSHER_CONTAINER], check=False, dry_run=dry_run)
+    run(cmd, dry_run=dry_run)
 
 
 def _stop_docker_pusher(dry_run: bool) -> None:
@@ -677,42 +715,25 @@ def _set_top_key(path, key: str, value: str) -> None:
 
 
 def _lb_edge_host() -> str:
-    """Return the host address at which lb-edge (hostNetwork) is reachable.
-
-    With hostNetwork:true the pod binds on the kind node's network namespace
-    (not the host's). On Linux, kind nodes are Docker containers whose IPs are
-    directly routable from the host, so we query the pod's status.hostIP.
-    An explicit MONOFS_PORT_FORWARD_ADDRESS override still works.
-    """
-    configured = os.environ.get("MONOFS_PORT_FORWARD_ADDRESS", "").strip()
-    if configured and configured != "0.0.0.0":
-        return configured
+    """Return the host address where lb-edge is externally reachable."""
     configured_ips = _configured_external_service_ips()
     if configured_ips:
         return configured_ips[0]
-    # Query the node IP where the lb-edge pod is actually running.
-    import subprocess as _sp
-    r = _sp.run(
-        [
-            "kubectl", "-n", LB_NAMESPACE, "get", "pod",
-            "-l", "app=monofs-haproxy",
-            "-o", "jsonpath={.items[0].status.hostIP}",
-        ],
-        capture_output=True, text=True,
+    endpoint = _resolve_service_external_endpoint(
+        LB_NAMESPACE, "monofs-external", "grpc", "9090"
     )
-    node_ip = r.stdout.strip()
-    if r.returncode == 0 and node_ip:
-        return node_ip
-    # Fallback: primary non-loopback IPv4.
-    try:
-        import socket as _socket
-        s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except OSError:
-        return "127.0.0.1"
+    if endpoint and ":" in endpoint:
+        return endpoint.rsplit(":", 1)[0]
+    return ""
+
+
+def _lb_edge_endpoint(port_name: str, service_port: str) -> str:
+    configured_ips = _configured_external_service_ips()
+    if configured_ips:
+        return f"{configured_ips[0]}:{service_port}"
+    return _resolve_service_external_endpoint(
+        LB_NAMESPACE, "monofs-external", port_name, service_port
+    )
 
 
 def guardian_ui_url() -> str:
@@ -720,7 +741,10 @@ def guardian_ui_url() -> str:
     env = os.environ.get("GUARDIAN_URL") or os.environ.get("GUARDIAN_API_URL", "")
     if env:
         return env
-    return f"http://{_lb_edge_host()}:{GUARDIAN_UI_PORT}"
+    endpoint = _lb_edge_endpoint("guardian-ui", GUARDIAN_UI_PORT)
+    if endpoint:
+        return f"http://{endpoint}"
+    return ""
 
 
 def client_discovery_token() -> str:
@@ -756,8 +780,8 @@ def stamp_urls(dry_run: bool) -> None:
         info(f"would update: {gcp}, {gdp}, {gcfg}, {dq}, {dcfg}")
         return
 
-    host = _lb_edge_host()
-    url = f"http://{host}:{GUARDIAN_UI_PORT}"
+    ui_endpoint = _lb_edge_endpoint("guardian-ui", GUARDIAN_UI_PORT)
+    url = f"http://{ui_endpoint}" if ui_endpoint else ""
     info(f"guardian UI URL (via lb-edge): {url}")
     _set_env_in_intent(gcp, "GUARDIAN_UI_BASE_URL", url)
     _set_top_key(gcfg, "guardian_ui_base_url", url)
@@ -767,7 +791,7 @@ def stamp_urls(dry_run: bool) -> None:
     # reach MonoFS gRPC — it goes through lb-edge on the host IP.
     # guardiand itself uses GUARDIAN_MONOFS_ROUTER (in-cluster svc) and must
     # NOT be patched with the host IP or it will fail DNS resolution.
-    monofs_grpc_endpoint = f"{host}:9090"
+    monofs_grpc_endpoint = _lb_edge_endpoint("grpc", "9090") or GUARDIAN_MONOFS_ROUTER
     info(f"guardian MonoFS client API endpoint (via lb-edge): {monofs_grpc_endpoint}")
     _set_dict_env_in_intent(gcp, "GUARDIAN_MONOFS_CLIENT_API_ENDPOINT", monofs_grpc_endpoint)
 
