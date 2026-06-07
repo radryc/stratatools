@@ -422,6 +422,7 @@ def _deploy_docker_pusher(dry_run: bool) -> None:
             "-e", f"GUARDIAN_MONOFS_ROUTER={router}",
             "-e", f"GUARDIAN_MONOFS_TOKEN={token}",
             "-e", "GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES=true",
+            "-e", "GUARDIAN_ADD_HOSTS=host.docker.internal:host-gateway",
             GUARDIAN_DOCKER_PUSHER_IMAGE,
         ]
     )
