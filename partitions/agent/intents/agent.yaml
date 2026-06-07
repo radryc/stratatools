@@ -1,117 +1,119 @@
 apiVersion: guardian/v1alpha1
 kind: Intent
 metadata:
-    name: agent
+  name: agent
 spec:
-    intentType: standard
-    targetPusher: k8s-main
-    target:
-        cluster: k8s-main
-        namespace: agent
-    locked: false
-    assets:
-        - type: Volume
-          name: llm-models
-          version: 20260603-1652
-          properties:
-            accessMode: ReadWriteOnce
-            size: 20Gi
-        - type: Volume
-          name: lagent-data
-          version: 20260603-1652
-          properties:
-            accessMode: ReadWriteOnce
-            size: 5Gi
-        - type: Compute
-          name: lagent-llm
-          version: 20260603-1652
-          dependsOn:
-            - llm-models
-          payload:
-            k8s: /partitions/agent/payloads/llm.k8s.yaml
-          properties:
-            env:
-                CTX_SIZE: "8192"
-                MODEL_DIR: /models
-                MODEL_FILE: gemma-4-E4B-it-Q4_K_M.gguf
-                MODEL_REPO: unsloth/gemma-4-E4B-it-GGUF
-                N_GPU_LAYERS: "99"
-                PARALLEL: "1"
-                THREADS: "4"
-            image: lagent-llm:sha256-5fb1d6452eab56f3
-            imagePullPolicy: IfNotPresent
-            ports:
-                - containerPort: 8080
-                  name: http
-                  protocol: TCP
-                  servicePort: 8080
-            resources:
-                limits:
-                    cpu: "2"
-                    memory: 12Gi
-                requests:
-                    cpu: 500m
-                    memory: 2Gi
-            volumeMounts:
-                - path: /models
-                  volume: llm-models
-        - type: Compute
-          name: lagent-backend
-          version: 20260603-1652
-          dependsOn:
-            - lagent-llm
-            - lagent-data
-          payload:
-            k8s: /partitions/agent/payloads/backend.k8s.yaml
-          properties:
-            env:
-                AGENT_NAME: Lagent
-                AGENT_SYSTEM_PROMPT: You are Lagent, a helpful personal AI assistant. Be concise, accurate, and friendly.
-                DATABASE_URL: sqlite+aiosqlite:////data/lagent.db
-                LLM_BASE_URL: http://k8s-svc-compute-k8s-main-agent-agent-agent-lagent-llm.agent.svc.cluster.local:8080
-                OTEL_ENABLED: "true"
-                OTEL_EXPORTER_OTLP_ENDPOINT: http://k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
-                OTEL_EXPORTER_OTLP_INSECURE: "true"
-                OTEL_METRIC_EXPORT_INTERVAL_MS: "15000"
-                OTEL_SERVICE_NAME: lagent-backend
-            image: lagent-backend:sha256-3965fe85d7c42456
-            imagePullPolicy: IfNotPresent
-            ports:
-                - containerPort: 8090
-                  name: http
-                  protocol: TCP
-                  servicePort: 8090
-            resources:
-                limits:
-                    cpu: "1"
-                    memory: 2Gi
-                requests:
-                    cpu: 200m
-                    memory: 512Mi
-            volumeMounts:
-                - path: /data
-                  volume: lagent-data
-        - type: Compute
-          name: lagent-frontend
-          version: 20260603-1652
-          dependsOn:
-            - lagent-backend
-          payload:
-            k8s: /partitions/agent/payloads/frontend.k8s.yaml
-          properties:
-            env:
-                LAGENT_BACKEND_HOST: k8s-svc-compute-k8s-main-agent-agent-agent-lagent-backend.agent.svc.cluster.local
-            image: lagent-frontend:sha256-1a6b570557f4c030
-            imagePullPolicy: IfNotPresent
-            ports:
-                - containerPort: 3000
-                  name: http
-                  protocol: TCP
-                  servicePort: 9191
-            resources:
-                limits:
-                    cpu: 500m
-                    memory: 512Mi
-                requests:
-                    cpu: 100m
-                    memory: 256Mi
+  intentType: standard
+  targetPusher: k8s-main
+  target:
+    cluster: k8s-main
+    namespace: agent
+  locked: false
+  assets:
+  - type: Volume
+    name: llm-models
+    version: 20260607-1032
+    properties:
+      accessMode: ReadWriteOnce
+      size: 20Gi
+  - type: Volume
+    name: lagent-data
+    version: 20260607-1032
+    properties:
+      accessMode: ReadWriteOnce
+      size: 5Gi
+  - type: Compute
+    name: lagent-llm
+    version: 20260607-1032
+    dependsOn:
+    - llm-models
+    payload:
+      k8s: /partitions/agent/payloads/llm.k8s.yaml
+    properties:
+      env:
+        CTX_SIZE: '8192'
+        MODEL_DIR: /models
+        MODEL_FILE: gemma-4-E4B-it-Q4_K_M.gguf
+        MODEL_REPO: unsloth/gemma-4-E4B-it-GGUF
+        N_GPU_LAYERS: '99'
+        PARALLEL: '1'
+        THREADS: '4'
+      image: lagent-llm:sha256-2dfe1005de119ccf
+      imagePullPolicy: IfNotPresent
+      ports:
+      - containerPort: 8080
+        name: http
+        protocol: TCP
+        servicePort: 8080
+      resources:
+        limits:
+          cpu: '2'
+          memory: 12Gi
+        requests:
+          cpu: 500m
+          memory: 2Gi
+      volumeMounts:
+      - path: /models
+        volume: llm-models
+  - type: Compute
+    name: lagent-backend
+    version: 20260607-1032
+    dependsOn:
+    - lagent-llm
+    - lagent-data
+    payload:
+      k8s: /partitions/agent/payloads/backend.k8s.yaml
+    properties:
+      env:
+        AGENT_NAME: Lagent
+        AGENT_SYSTEM_PROMPT: You are Lagent, a helpful personal AI assistant. Be concise,
+          accurate, and friendly.
+        DATABASE_URL: sqlite+aiosqlite:////data/lagent.db
+        GUARDIAN_URL: http://guardian-ui.guardian.svc.cluster.local:8090
+        LLM_BASE_URL: http://k8s-svc-compute-k8s-main-agent-agent-agent-lagent-llm.agent.svc.cluster.local:8080
+        OTEL_ENABLED: 'true'
+        OTEL_EXPORTER_OTLP_ENDPOINT: http://k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
+        OTEL_EXPORTER_OTLP_INSECURE: 'true'
+        OTEL_METRIC_EXPORT_INTERVAL_MS: '15000'
+        OTEL_SERVICE_NAME: lagent-backend
+      image: lagent-backend:sha256-3965fe85d7c42456
+      imagePullPolicy: IfNotPresent
+      ports:
+      - containerPort: 8090
+        name: http
+        protocol: TCP
+        servicePort: 8090
+      resources:
+        limits:
+          cpu: '1'
+          memory: 2Gi
+        requests:
+          cpu: 200m
+          memory: 512Mi
+      volumeMounts:
+      - path: /data
+        volume: lagent-data
+  - type: Compute
+    name: lagent-frontend
+    version: 20260607-1032
+    dependsOn:
+    - lagent-backend
+    payload:
+      k8s: /partitions/agent/payloads/frontend.k8s.yaml
+    properties:
+      env:
+        LAGENT_BACKEND_HOST: k8s-svc-compute-k8s-main-agent-agent-agent-lagent-backend.agent.svc.cluster.local
+      image: lagent-frontend:sha256-fe33b8a37e8efd92
+      imagePullPolicy: IfNotPresent
+      ports:
+      - containerPort: 3000
+        name: http
+        protocol: TCP
+        servicePort: 9191
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 100m
+          memory: 256Mi
