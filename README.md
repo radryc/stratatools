@@ -25,12 +25,12 @@ commands:
 1. `st-setup` clones `guardian`, `doctor`, `monofs`, `kvs`, and the other
    sibling repos beside `stratatools`, ensures a shared `../monofs/.env` with
    `MONOFS_ENCRYPTION_KEY`, and auto-creates or reuses a local `kind` cluster
-   named `strata` with three workers when no cluster is reachable.
+   named `strata` with two workers when no cluster is reachable.
 2. `st-bootstrap` builds the host CLIs, builds the bootstrap MonoFS and
    Guardian images, and deploys the bootstrap control plane using that same
    MonoFS encryption key.
-3. `st-release --all --bump` builds, distributes, stamps, and reconciles all
-   managed partitions.
+3. `st-release --all --bump` prepares image sources where needed, distributes
+   images or build contexts, and reconciles all managed partitions.
 
 ### Optional AWS Setup
 
@@ -87,7 +87,7 @@ Toolkit for building and deploying the whole ainfra (Strata) system.
 | `st-bootstrap stamp-urls` | Resolve live endpoints and stamp them into partition configs |
 | `st-bootstrap stop` | Scale all bootstrap deployments to zero |
 | `st-bootstrap destroy` | Delete Guardian and storage namespaces |
-| `st-release` | Build → push → stamp → push to Guardian for one or more partitions |
+| `st-release` | Prepare/build images as needed, then push partitions to Guardian |
 | `st-image` | Build / push / stamp partition images individually |
 | `st-dogfood` | Ingest local Strata repositories into the running MonoFS cluster |
 | `st-aws-setup` | Provision IAM Roles Anywhere + CloudFormation roles for AWS pusher |
@@ -125,7 +125,8 @@ This clones `guardian`, `doctor`, `monofs`, `kvs`, `k8s-top`, `agent`,
 `packager`, and `cfg` as siblings of the `stratatools` directory, checks that
 Docker / Go / kubectl / kind are installed, seeds `../monofs/.env` with a new
 `MONOFS_ENCRYPTION_KEY` if one does not exist, and auto-creates a local kind
-cluster named `strata` (3 workers) when no Kubernetes cluster is reachable.
+cluster named `strata` (2 workers, 3 nodes total) when no Kubernetes cluster is
+reachable.
 
 ### 2. (Optional) Set local overrides
 
@@ -168,7 +169,8 @@ uv run st-bootstrap deploy
 
 This builds the host CLIs (`guardianctl`, `monofs-*`) into `~/bin`, builds the
 MonoFS and Guardian container images, loads them into the kind cluster, deploys
-MonoFS storage and the Guardian control plane, and stamps external endpoints
+MonoFS storage, the Guardian control plane, and the local Guardian image-build
+registry used by the `agent` ImageBuild pilot, and stamps external endpoints
 into the partition configs.
 
 After deploy completes, all services are accessible through the single lb-edge
@@ -202,11 +204,55 @@ To override the bind address set `MONOFS_PORT_FORWARD_ADDRESS` in
 uv run st-release --all --bump
 ```
 
-This builds, pushes (or cluster-loads on kind), stamps, and pushes each
-partition to Guardian. Use `--wait` to block until all partitions converge.
+This builds, pushes (or cluster-loads on kind), or stages Guardian-managed
+image build sources as needed, then pushes each partition to Guardian. Use
+`--wait` to block until all partitions converge.
 
 Managed partitions: `agent`, `dev-workspace`, `doctor`, `guardian-configs`,
 `k8s-top`, `lolipop`, `monitoring`, `opentelemetry`.
+
+`agent` is the current pilot for Guardian-native `ImageBuild` assets: its
+`images` intent publishes immutable refs, and the runtime `agent` intent joins
+that intent and consumes `${intent.images.outputs.*.imageRef}` instead of
+checked-in stamped image refs.
+
+If you want to release `agent` **without the Python wrappers**, the raw flow is:
+
+```bash
+# 1. Stage the current agent source trees into the partition bundle
+rm -rf partitions/agent/payloads/sources
+mkdir -p partitions/agent/payloads/sources/lagent-llm \
+         partitions/agent/payloads/sources/lagent-backend \
+         partitions/agent/payloads/sources/lagent-frontend
+cp -R ../agent/llm/. partitions/agent/payloads/sources/lagent-llm/
+cp -R ../agent/backend/. partitions/agent/payloads/sources/lagent-backend/
+cp -R ../agent/frontend/. partitions/agent/payloads/sources/lagent-frontend/
+
+# 2. Point guardianctl at the running bootstrap Guardian
+export GUARDIAN_URL=http://127.0.0.1:8090
+export GUARDIAN_DISCOVERY_TOKEN="$(
+  kubectl -n guardian get secret guardian-secrets \
+    -o jsonpath='{.data.client-discovery-token}' | base64 -d
+)"
+
+# 3. Tag, push, reconcile, and wait
+guardianctl --guardian-url "$GUARDIAN_URL" \
+  --guardian-discovery-token "$GUARDIAN_DISCOVERY_TOKEN" \
+  partition tag --dir ./partitions/agent
+guardianctl --guardian-url "$GUARDIAN_URL" \
+  --guardian-discovery-token "$GUARDIAN_DISCOVERY_TOKEN" \
+  partition push --dir ./partitions/agent
+guardianctl --guardian-url "$GUARDIAN_URL" \
+  --guardian-discovery-token "$GUARDIAN_DISCOVERY_TOKEN" \
+  partition reconcile --partition agent
+guardianctl --guardian-url "$GUARDIAN_URL" \
+  --guardian-discovery-token "$GUARDIAN_DISCOVERY_TOKEN" \
+  partition wait --partition agent
+```
+
+That assumes the bootstrap stack was already updated with `st-bootstrap deploy`
+or `st-bootstrap rollout`, because the new flow depends on the Guardian local
+registry and the updated `guardian-pusher-k8s` image builder.
 
 To release a subset:
 
@@ -217,6 +263,13 @@ uv run st-release -p doctor -p monitoring --bump --wait
 > **Note:** `lolipop` requires a CUDA-capable GPU and custom images not built
 > by stratatools. Skip it on CPU-only or kind clusters by releasing other
 > partitions explicitly with `-p`.
+
+### Follow-up TODO
+
+- remove the current separate `images` → runtime intent split by teaching
+  Guardian to resolve producer outputs in the same reconcile cycle
+- migrate more partitions from `st-image` stamping to Guardian-native
+  `ImageBuild` assets after the `agent` pilot stabilizes
 
 ### 6. Ingest repositories into MonoFS (optional)
 

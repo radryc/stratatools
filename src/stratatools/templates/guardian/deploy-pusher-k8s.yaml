@@ -16,6 +16,7 @@ spec:
         app: guardian-pusher-k8s
     spec:
       serviceAccountName: guardian
+${LOCAL_REGISTRY_HOST_ALIASES}
       containers:
         - name: pusher
           image: ${GUARDIAN_PUSHER_IMAGE}
@@ -36,3 +37,15 @@ spec:
                   key: monofs-token
             - name: GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES
               value: "${GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES}"
+            - name: GUARDIAN_IMAGE_BUILD_REGISTRY
+              value: "${GUARDIAN_IMAGE_BUILD_REGISTRY}"
+            - name: GUARDIAN_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: GUARDIAN_KANIKO_IMAGE
+              value: "gcr.io/kaniko-project/executor:v1.24.0"

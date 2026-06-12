@@ -35,16 +35,15 @@ spec:
                   name: guardian-secrets
                   key: monofs-token
             - name: GUARDIAN_CLIENT_DISCOVERY_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: guardian-secrets
-                  key: client-discovery-token
+              value: "${GUARDIAN_CLIENT_DISCOVERY_TOKEN}"
             - name: GUARDIAN_PUSHERS
               value: "${GUARDIAN_PUSHERS}"
             - name: GUARDIAN_UI_LISTEN
               value: "${GUARDIAN_UI_LISTEN}"
             - name: GUARDIAN_UI_BASE_URL
               value: "${GUARDIAN_UI_BASE_URL}"
+            - name: GUARDIAN_STALE_TASK_AFTER
+              value: "30m"
           ports:
             - containerPort: ${GUARDIAN_UI_PORT}
           volumeMounts:

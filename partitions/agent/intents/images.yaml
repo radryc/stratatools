@@ -1,0 +1,39 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+    name: images
+spec:
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: agent
+    locked: false
+    assets:
+        - type: ImageBuild
+          name: lagent-llm-build
+          version: 20260611-1432
+          properties:
+            dockerfile: Dockerfile
+            platform: linux/amd64
+            registry: registry.strata.local:5000
+            repository: lagent-llm
+            sourceDir: /partitions/agent/payloads/sources/lagent-llm
+        - type: ImageBuild
+          name: lagent-backend-build
+          version: 20260611-1432
+          properties:
+            dockerfile: Dockerfile
+            platform: linux/amd64
+            registry: registry.strata.local:5000
+            repository: lagent-backend
+            sourceDir: /partitions/agent/payloads/sources/lagent-backend
+        - type: ImageBuild
+          name: lagent-frontend-build
+          version: 20260611-1432
+          properties:
+            dockerfile: Dockerfile
+            platform: linux/amd64
+            registry: registry.strata.local:5000
+            repository: lagent-frontend
+            sourceDir: /partitions/agent/payloads/sources/lagent-frontend

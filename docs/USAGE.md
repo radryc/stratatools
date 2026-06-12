@@ -9,7 +9,8 @@ The normal flow is:
 2. Run `st-setup` to clone the sibling repositories beside it.
 3. Run `st-bootstrap` to build host CLIs, build bootstrap images, and deploy
    bootstrap MonoFS + Guardian.
-4. Run `st-release --all --bump` to build, distribute, stamp, and reconcile the
+4. Run `st-release --all --bump` to build or stage image sources, distribute,
+   and reconcile the
    managed partitions.
 
 For AWS local deploy runners that need IAM Roles Anywhere credentials for
@@ -58,7 +59,8 @@ You need these host tools:
 
 You need a reachable Kubernetes cluster before `st-bootstrap deploy` can
 succeed. If `st-setup` does not find one, it auto-creates or reuses a local
-`kind` cluster named `strata` with three workers by default. Supported local
+`kind` cluster named `strata` with two workers by default (three nodes total).
+Supported local
 options are:
 
 - Docker Desktop Kubernetes
@@ -107,16 +109,17 @@ What each step does:
    exist, ensures `../monofs/.env` contains a shared
    `MONOFS_ENCRYPTION_KEY`, verifies Docker, kubectl, Go, Python, and cluster
    reachability, then creates or reuses a local `kind` cluster named `strata`
-   with three workers if no cluster is reachable yet.
+   with two workers if no cluster is reachable yet.
 2. `uv run st-bootstrap deploy`
    Builds `guardianctl`, `monofs-client`, `monofs-session`, and
    `monofs-search` into `~/bin`, deploys bootstrap MonoFS storage, deploys
-   bootstrap Guardian, installs `metrics-server`, and applies the bootstrap
-   RBAC manifests used by OpenTelemetry, `k8s-top`, and the dev workspace,
-   reusing the same `MONOFS_ENCRYPTION_KEY` from `../monofs/.env`, keeps
-   `monofs-external` forwarded to `localhost:8080` and `localhost:9090`, then
-   stamps the current Guardian UI and host-reachable MonoFS client endpoint
-   into the checked-in partition config for later releases.
+   bootstrap Guardian, deploys the local Guardian image-build registry used by
+   the current `agent` pilot, installs `metrics-server`, and applies the
+   bootstrap RBAC manifests used by OpenTelemetry, `k8s-top`, and the dev
+   workspace, reusing the same `MONOFS_ENCRYPTION_KEY` from `../monofs/.env`,
+   keeps `monofs-external` forwarded to `localhost:8080` and `localhost:9090`,
+   then stamps the current Guardian UI and host-reachable MonoFS client
+   endpoint into the checked-in partition config for later releases.
 
 That managed MonoFS port-forward binds `0.0.0.0` by default so both
 `http://localhost:8080/` and `http://<host-ip>:8080/` work from the host.
@@ -132,8 +135,8 @@ If your cluster does not have a LoadBalancer controller, set
 publish that address on the bootstrap Services and use it when stamping
 host-reachable URLs.
 3. `uv run st-release --all --bump --wait`
-   Builds local partition images where needed, distributes them, stamps image
-   references into the partition YAML, pushes the partitions with
+   Builds local partition images where needed, or stages Guardian-managed image
+   build sources for pilot partitions, then pushes the partitions with
    `guardianctl`, reconciles them, and waits for convergence.
 
 When `dev-workspace` is part of the released set, the intended localhost
@@ -180,11 +183,28 @@ That means the full flow covers:
 
 `st-image` and `st-release` inspect the current kubectl context:
 
-- on `docker-desktop` and `kind-*`, images are cluster-loaded into the nodes
+- on `docker-desktop` and `kind-*`, Kubernetes-targeted partition images are cluster-loaded into the required nodes
+- partitions that target Docker pushers keep their immutable tags local on the host Docker daemon instead of being imported into kind nodes
 - on other contexts, images are tagged and pushed to the registry given by
   `--registry`
 
 The default registry is `localhost:5000` when cluster-load mode is not active.
+
+The `agent` partition is the current Guardian-native `ImageBuild` pilot. Its
+`images` intent publishes immutable refs to `registry.strata.local:5000`, and
+the runtime intent joins `images` and resolves container `image` fields from
+`${intent.images.outputs.<asset>.imageRef}` instead of checked-in stamped refs.
+
+## Follow-up TODO
+
+- same-reconcile producer/consumer resolution so ImageBuild and Compute assets
+  can live in one intent without the current `joins` split
+- migrate the remaining stratatools partitions from manual image stamping to
+  Guardian-native image builds after the pilot hardens
+
+For kind clusters, `st-image` can further narrow image imports when a workload's
+Kubernetes payload declares an explicit `nodeSelector`. Workloads without a
+placement hint still load into all kind nodes by default.
 
 Examples:
 

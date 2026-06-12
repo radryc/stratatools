@@ -48,6 +48,12 @@ GUARDIAN_AWS_PUSHER_NAME = os.environ.get("GUARDIAN_AWS_PUSHER_NAME", _default_a
 GUARDIAN_AWS_ASSUME_ROLE_NAME = os.environ.get(
     "GUARDIAN_AWS_ASSUME_ROLE_NAME", "GuardianCdkDeployRole"
 )
+LOCAL_REGISTRY_NAME = os.environ.get("LOCAL_REGISTRY_NAME", "guardian-local-registry")
+LOCAL_REGISTRY_HOST = os.environ.get("LOCAL_REGISTRY_HOST", "registry.strata.local")
+LOCAL_REGISTRY_PORT = os.environ.get("LOCAL_REGISTRY_PORT", "5000")
+GUARDIAN_IMAGE_BUILD_REGISTRY = os.environ.get(
+    "GUARDIAN_IMAGE_BUILD_REGISTRY", f"{LOCAL_REGISTRY_HOST}:{LOCAL_REGISTRY_PORT}"
+)
 
 
 def _aws_pusher_enabled() -> bool:
@@ -295,6 +301,76 @@ def _b64(s: str) -> str:
     return base64.b64encode(s.encode()).decode()
 
 
+def _local_registry_cluster_ip() -> str:
+    return _kubectl_query(
+        [
+            "-n",
+            NAMESPACE,
+            "get",
+            "service",
+            LOCAL_REGISTRY_NAME,
+            "-o",
+            "jsonpath={.spec.clusterIP}",
+        ]
+    )
+
+
+def _local_registry_host_aliases_yaml() -> str:
+    cluster_ip = _local_registry_cluster_ip()
+    if not cluster_ip:
+        return ""
+    return (
+        "      hostAliases:\n"
+        f'      - ip: "{cluster_ip}"\n'
+        "        hostnames:\n"
+        f'        - "{LOCAL_REGISTRY_HOST}"'
+    )
+
+
+def _kubectl_context() -> str:
+    return _kubectl_query(["config", "current-context"])
+
+
+def _kind_node_names() -> list[str]:
+    raw = _kubectl_query(["get", "nodes", "-o", "jsonpath={.items[*].metadata.name}"])
+    return [part.strip() for part in raw.split() if part.strip()]
+
+
+def _configure_kind_local_registry(dry_run: bool) -> None:
+    ctx = _kubectl_context()
+    if not ctx.startswith("kind-"):
+        return
+    cluster_ip = _local_registry_cluster_ip()
+    if not cluster_ip:
+        warn(f"{LOCAL_REGISTRY_NAME} clusterIP not available; skipping kind registry configuration")
+        return
+    info(f"=== configuring kind containerd mirror for {GUARDIAN_IMAGE_BUILD_REGISTRY} ===")
+    hosts_toml = (
+        f'server = "http://{GUARDIAN_IMAGE_BUILD_REGISTRY}"\n\n'
+        f'[host."http://{cluster_ip}:{LOCAL_REGISTRY_PORT}"]\n'
+        '  capabilities = ["pull", "resolve"]\n'
+        "  skip_verify = true\n"
+    )
+    escaped = hosts_toml.replace("'", "'\"'\"'")
+    registry_dir = f"/etc/containerd/certs.d/{GUARDIAN_IMAGE_BUILD_REGISTRY}"
+    for node in _kind_node_names():
+        run(
+            [
+                "docker",
+                "exec",
+                node,
+                "sh",
+                "-c",
+                (
+                    f"mkdir -p '{registry_dir}' && "
+                    f"printf '%s' '{escaped}' > '{registry_dir}/hosts.toml'"
+                ),
+            ],
+            check=False,
+            dry_run=dry_run,
+        )
+
+
 def _vars() -> dict:
     monofs_token = os.environ.get("MONOFS_TOKEN") or secrets.token_urlsafe(32)
     cdt = os.environ.get("CLIENT_DISCOVERY_TOKEN") or secrets.token_urlsafe(32)
@@ -322,6 +398,9 @@ def _vars() -> dict:
         "GUARDIAN_UI_PORT": GUARDIAN_UI_PORT,
         "GUARDIAN_UI_LISTEN": GUARDIAN_UI_LISTEN,
         "GUARDIAN_UI_BASE_URL": GUARDIAN_UI_BASE_URL,
+        "GUARDIAN_IMAGE_BUILD_REGISTRY": GUARDIAN_IMAGE_BUILD_REGISTRY,
+        "LOCAL_REGISTRY_PORT": LOCAL_REGISTRY_PORT,
+        "LOCAL_REGISTRY_HOST_ALIASES": "",
         "GUARDIAN_CLIENT_DISCOVERY_TOKEN": cdt,
         "MONOFS_TOKEN": _b64(monofs_token),
         "CLIENT_DISCOVERY_TOKEN": _b64(cdt),
@@ -352,20 +431,26 @@ def build_images(dry_run: bool) -> None:
 
 
 def load_images(dry_run: bool) -> None:
-    from stratatools.image import _cluster_load, _cluster_load_mode, kubectl_context
+    from stratatools.image import kind_load_images, _cluster_load, _cluster_load_mode, kubectl_context
 
     ctx = kubectl_context()
     if not _cluster_load_mode(ctx):
         return
 
-    info(f"=== loading guardian images into cluster context {ctx} ===")
-    for image in [GUARDIAN_IMAGE, GUARDIAN_PUSHER_IMAGE, GUARDIAN_LB_IMAGE]:
-        _cluster_load(image, dry_run)
+    images = [GUARDIAN_IMAGE, GUARDIAN_PUSHER_IMAGE, GUARDIAN_LB_IMAGE]
     if _aws_pusher_enabled():
-        _cluster_load(GUARDIAN_PUSHER_AWS_IMAGE, dry_run)
+        images.append(GUARDIAN_PUSHER_AWS_IMAGE)
+
+    from stratatools.image import _kind_cluster_name
+    if _kind_cluster_name(ctx):
+        kind_load_images(images, dry_run)
+    else:
+        info(f"=== loading guardian images into cluster context {ctx} ===")
+        for image in images:
+            _cluster_load(image, dry_run, force=True)
 
 
-_DEPLOYS = ["guardiand", "guardian-pusher-k8s"]
+_DEPLOYS = ["guardian-local-registry", "guardiand", "guardian-pusher-k8s"]
 if _aws_pusher_enabled():
     _DEPLOYS.append("guardian-pusher-aws")
 _CLUSTER_ROLE_BINDINGS = [
@@ -441,9 +526,19 @@ def _apply_manifests(dry_run: bool) -> None:
     _apply(_render("namespace.yaml"), dry_run)
     _apply(_render("secret.yaml"), dry_run)
     _apply(_render("rbac.yaml"), dry_run)
+    _apply(_render("svc-local-registry.yaml"), dry_run)
+    _apply(_render("deploy-local-registry.yaml"), dry_run)
     _apply(_render("svc-guardian-ui.yaml"), dry_run)
     _apply(_render("deploy-guardiand.yaml"), dry_run)
-    _apply(_render("deploy-pusher-k8s.yaml"), dry_run)
+    _apply(
+        _render(
+            "deploy-pusher-k8s.yaml",
+            {
+                "LOCAL_REGISTRY_HOST_ALIASES": _local_registry_host_aliases_yaml(),
+            },
+        ),
+        dry_run,
+    )
     if _aws_pusher_enabled():
         _apply(_render("deploy-pusher-aws.yaml"), dry_run)
 
@@ -471,6 +566,7 @@ def _wait_rollouts(dry_run: bool) -> None:
 
 def deploy(dry_run: bool) -> None:
     _apply_manifests(dry_run)
+    _configure_kind_local_registry(dry_run)
     _deploy_docker_pusher(dry_run)
     # Stamp URLs (incl. GUARDIAN_MONOFS_CLIENT_API_ENDPOINT) before waiting so
     # guardiand only restarts once instead of twice.
@@ -480,6 +576,7 @@ def deploy(dry_run: bool) -> None:
 
 def rollout(dry_run: bool) -> None:
     _apply_manifests(dry_run)
+    _configure_kind_local_registry(dry_run)
     _deploy_docker_pusher(dry_run)
     run(
         ["kubectl", "-n", NAMESPACE, "rollout", "restart", "deployment"],

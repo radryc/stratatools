@@ -46,6 +46,27 @@ class BootstrapExternalServiceIPTests(unittest.TestCase):
         ):
             self.assertEqual(guardian._lb_edge_host(), "172.21.63.46")
 
+    def test_lb_edge_host_ignores_port_forward_override(self) -> None:
+        with mock.patch.dict(
+            guardian.os.environ,
+            {
+                "EXTERNAL_SERVICE_IP": "172.21.63.46",
+                "MONOFS_PORT_FORWARD_ADDRESS": "127.0.0.1",
+            },
+            clear=False,
+        ):
+            self.assertEqual(guardian._lb_edge_host(), "172.21.63.46")
+
+    def test_guardian_ui_url_uses_lb_service_endpoint(self) -> None:
+        with mock.patch.dict(
+            guardian.os.environ,
+            {"EXTERNAL_SERVICE_IP": "", "EXTERNAL_SERVICE_IPS": ""},
+            clear=False,
+        ), mock.patch.object(
+            guardian, "_resolve_service_external_endpoint", return_value="172.21.63.46:8090"
+        ):
+            self.assertEqual(guardian.guardian_ui_url(), "http://172.21.63.46:8090")
+
 
 if __name__ == "__main__":
     unittest.main()

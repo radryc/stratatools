@@ -12,7 +12,7 @@ spec:
     assets:
         - type: Config
           name: grafana-datasources
-          version: 20260603-1655
+          version: 20260611-1459
           properties:
             data:
                 datasources.yaml: |
@@ -22,20 +22,20 @@ spec:
                         uid: prometheus
                         type: prometheus
                         access: proxy
-                        url: http://k8s-svc-lb-k8s-main-doctor-doctor-query-query-edge.doctor.svc.cluster.local:18080
+                        url: http://k8s-svc-compute-k8s-main-doctor-doctor-query-query.doctor.svc.cluster.local:18080
                         isDefault: true
                         editable: true
                       - name: Doctor Logs
                         uid: doctor-logs
                         type: loki
                         access: proxy
-                        url: http://k8s-svc-lb-k8s-main-doctor-doctor-query-query-edge.doctor.svc.cluster.local:18080
+                        url: http://k8s-svc-compute-k8s-main-doctor-doctor-query-query.doctor.svc.cluster.local:18080
                         editable: true
                       - name: Doctor Traces
                         uid: doctor-traces
                         type: zipkin
                         access: proxy
-                        url: http://k8s-svc-lb-k8s-main-doctor-doctor-query-query-edge.doctor.svc.cluster.local:18080
+                        url: http://k8s-svc-compute-k8s-main-doctor-doctor-query-query.doctor.svc.cluster.local:18080
                         jsonData:
                           tracesToLogsV2:
                             datasourceUid: doctor-logs
@@ -59,7 +59,7 @@ spec:
             format: yaml
         - type: Config
           name: grafana-dashboards-provider
-          version: 20260603-1655
+          version: 20260611-1459
           properties:
             data:
                 dashboards.yaml: |
@@ -108,7 +108,7 @@ spec:
             format: yaml
         - type: Config
           name: grafana-dashboards-monofs
-          version: 20260603-1655
+          version: 20260611-1459
           properties:
             data:
                 monofs-comprehensive-health.json: |
@@ -852,7 +852,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-guardian
-          version: 20260603-1655
+          version: 20260611-1459
           properties:
             data:
                 guardian-comprehensive-health.json: |
@@ -1213,7 +1213,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-doctor
-          version: 20260603-1655
+          version: 20260611-1459
           properties:
             data:
                 doctor-comprehensive-health.json: |
@@ -2056,7 +2056,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-system
-          version: 20260603-1655
+          version: 20260611-1459
           properties:
             data:
                 k8s-cluster-resource-watch.json: |
@@ -3245,7 +3245,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-guardian-rollouts
-          version: 20260603-1655
+          version: 20260611-1459
           properties:
             data:
                 guardian-intent-rollout-correlation.json: |
@@ -3629,12 +3629,12 @@ spec:
             format: json
         - type: Volume
           name: grafana-storage
-          version: 20260603-1655
+          version: 20260611-1459
           properties:
             ephemeral: true
         - type: Compute
           name: grafana
-          version: 20260603-1655
+          version: 20260611-1459
           dependsOn:
             - grafana-datasources
             - grafana-dashboards-provider
@@ -3676,7 +3676,7 @@ spec:
                 GF_SECURITY_ADMIN_PASSWORD: admin
                 GF_SECURITY_ADMIN_USER: admin
                 GF_USERS_VIEWERS_CAN_EDIT: "false"
-            image: grafana/grafana:sha256-73d08928237b0c95
+            image: grafana/grafana:sha256-a03d9e604e4dba58
             imagePullPolicy: IfNotPresent
             ports:
                 - containerPort: 3000

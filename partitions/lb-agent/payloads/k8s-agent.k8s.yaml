@@ -1,7 +1,7 @@
-image: lb:sha256-8be5dd53984da3f3
+image: lb:sha256-de1f51ff61237fad
 command:
-  - /usr/local/bin/lb-k8s-agent
+- /usr/local/bin/lb-k8s-agent
 args:
-  - -registry-addr
-  - monofs-external.lb-edge.svc.cluster.local:15051
+- -registry-addr
+- monofs-external.lb-edge.svc.cluster.local:15051
 serviceAccountName: lb-k8s-agent

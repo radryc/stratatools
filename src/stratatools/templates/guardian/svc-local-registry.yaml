@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: guardian-local-registry
+  namespace: ${NAMESPACE}
+  labels:
+    app: guardian-local-registry
+spec:
+  type: ClusterIP
+  selector:
+    app: guardian-local-registry
+  ports:
+    - name: registry
+      port: ${LOCAL_REGISTRY_PORT}
+      targetPort: registry

@@ -48,6 +48,14 @@ MONOFS_LOCAL_HTTP_PORT = int(os.environ.get("MONOFS_LOCAL_HTTP_PORT", "8080"))
 MONOFS_LOCAL_GRPC_PORT = int(os.environ.get("MONOFS_LOCAL_GRPC_PORT", "9090"))
 GUARDIAN_LOCAL_UI_PORT = int(os.environ.get("GUARDIAN_UI_PORT", "8090"))
 LB_LOCAL_ADMIN_PORT = int(os.environ.get("LB_LOCAL_ADMIN_PORT", "18081"))
+LB_DYNAMIC_PORT_MIN = int(os.environ.get("LB_DYNAMIC_PORT_MIN", "30000"))
+LB_DYNAMIC_PORT_MAX = int(os.environ.get("LB_DYNAMIC_PORT_MAX", "32767"))
+MONOFS_LB_PIN_CONTROL_PLANE = os.environ.get("MONOFS_LB_PIN_CONTROL_PLANE", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 NODE_NAMES = ("node-a", "node-b", "node-c", "node-d", "node-e")
 ROUTER_SUFFIXES = ("a", "b")
 
@@ -147,6 +155,21 @@ def _lb_user_service_ports_yaml() -> str:
 def _lb_user_service_container_ports_yaml() -> str:
     """containerPort entries for the lb-edge Deployment for user service ports."""
     return "\n".join(f"            - containerPort: {p}" for p in LB_USER_SERVICE_PORTS)
+
+
+def _lb_kind_node_placement_yaml(indent: int = 6) -> str:
+    if not MONOFS_LB_PIN_CONTROL_PLANE:
+        return ""
+    prefix = " " * indent
+    return (
+        "\n"
+        f"{prefix}nodeSelector:\n"
+        f"{prefix}  node-role.kubernetes.io/control-plane: \"\"\n"
+        f"{prefix}tolerations:\n"
+        f"{prefix}  - key: node-role.kubernetes.io/control-plane\n"
+        f"{prefix}    operator: Exists\n"
+        f"{prefix}    effect: NoSchedule"
+    )
 
 
 def _internal_node_addr(name: str) -> str:
@@ -525,6 +548,9 @@ def _vars() -> dict:
         # (agent frontend, vscode, etc.). Must be in K8s Service and port-forward.
         "LB_USER_SERVICE_PORTS_SPEC": _lb_user_service_ports_yaml(),
         "LB_USER_SERVICE_CONTAINER_PORTS": _lb_user_service_container_ports_yaml(),
+        "LB_KIND_NODE_PLACEMENT": _lb_kind_node_placement_yaml(),
+        "LB_DYNAMIC_PORT_MIN": str(min(LB_DYNAMIC_PORT_MIN, LB_DYNAMIC_PORT_MAX)),
+        "LB_DYNAMIC_PORT_MAX": str(max(LB_DYNAMIC_PORT_MIN, LB_DYNAMIC_PORT_MAX)),
     }
 
 
@@ -566,21 +592,25 @@ def build_images(dry_run: bool) -> None:
 
 
 def load_images(dry_run: bool) -> None:
-    from stratatools.image import _cluster_load, _cluster_load_mode, kubectl_context
+    from stratatools.image import kind_load_images, _cluster_load, _cluster_load_mode, _kind_cluster_name, kubectl_context
 
     ctx = kubectl_context()
     if not _cluster_load_mode(ctx):
         return
 
-    info(f"=== loading storage images into cluster context {ctx} ===")
-    for image in [
+    images = [
         MONOFS_SERVER_IMAGE,
         MONOFS_ROUTER_IMAGE,
         MONOFS_FETCHER_IMAGE,
         MONOFS_SEARCH_IMAGE,
         MONOFS_LB_IMAGE,
-    ]:
-        _cluster_load(image, dry_run)
+    ]
+    if _kind_cluster_name(ctx):
+        kind_load_images(images, dry_run)
+    else:
+        info(f"=== loading storage images into cluster context {ctx} ===")
+        for image in images:
+            _cluster_load(image, dry_run, force=True)
 
 
 def _is_wsl() -> bool:

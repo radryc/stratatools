@@ -1,0 +1,16 @@
+apiVersion: guardian/v1alpha1
+kind: Partition
+metadata:
+  name: monofs
+  labels:
+    role: infrastructure
+spec:
+  deletionPolicy: orphan
+  reconciliation:
+    mode: readonly
+    interval: 5m
+  labels:
+    stack: k8s
+    component: monofs
+    topology: kubernetes
+    managedBy: st-bootstrap

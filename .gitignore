@@ -13,6 +13,7 @@ build/
 .registry-push-addr
 .env
 bootstrap.local.env
+partitions/agent/payloads/sources/
 partitions/guardian-configs/intents/guardian-aws-pusher.local.yaml
 partitions/lolipop/
 .coverage

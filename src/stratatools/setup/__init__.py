@@ -97,7 +97,10 @@ CLUSTER_HINT = [
 ]
 KIND_INSTALL_TARGET = "sigs.k8s.io/kind@latest"
 DEFAULT_KIND_CLUSTER = "strata"
-DEFAULT_KIND_WORKERS = 5
+DEFAULT_KIND_WORKERS = 2
+KIND_EXPOSED_STATIC_PORTS = (8080, 8090, 9090, 15051, 18081, 9002, 9003, 9004, 9005, 9006, 8888, 9191, 3000, 4317, 18080)
+KIND_DYNAMIC_PORT_MIN = int(os.environ.get("LB_DYNAMIC_PORT_MIN", "30000"))
+KIND_DYNAMIC_PORT_MAX = int(os.environ.get("LB_DYNAMIC_PORT_MAX", "32767"))
 
 app = typer.Typer(no_args_is_help=False, help="bootstrap sibling repos and verify host prerequisites")
 
@@ -182,21 +185,37 @@ def _kind_binary() -> str | None:
 
 
 def _kind_config(worker_count: int) -> str:
-    node_extra = (
+    mounts_block = (
         "    extraMounts:\n"
         "    - hostPath: /var/run/docker.sock\n"
-        "      containerPath: /var/run/docker.sock\n"
+        "      containerPath: /var/run/docker.sock"
     )
+    port_lines = [
+        "    extraPortMappings:",
+    ]
+    dynamic_min = min(KIND_DYNAMIC_PORT_MIN, KIND_DYNAMIC_PORT_MAX)
+    dynamic_max = max(KIND_DYNAMIC_PORT_MIN, KIND_DYNAMIC_PORT_MAX)
+    exposed_ports = sorted(set(KIND_EXPOSED_STATIC_PORTS) | set(range(dynamic_min, dynamic_max + 1)))
+    for port in exposed_ports:
+        port_lines.extend(
+            [
+                f"    - containerPort: {port}",
+                f"      hostPort: {port}",
+                "      listenAddress: 0.0.0.0",
+                "      protocol: TCP",
+            ]
+        )
+    control_plane_extra = "\n".join(port_lines + [mounts_block])
     lines = [
         "kind: Cluster",
         "apiVersion: kind.x-k8s.io/v1alpha4",
         "nodes:",
         "  - role: control-plane",
     ]
-    lines.append(node_extra.rstrip())
+    lines.append(control_plane_extra)
     for _ in range(worker_count):
         lines.append("  - role: worker")
-        lines.append(node_extra.rstrip())
+        lines.append(mounts_block)
     return "\n".join(lines) + "\n"
 
 

@@ -6,7 +6,10 @@ refs derived from the local image content instead of mutable ``:latest`` tags.
 from __future__ import annotations
 
 import concurrent.futures
+import functools
+import json
 import os
+import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -27,10 +30,13 @@ KVS_REPO_DIR = Path(os.environ.get("KVS_REPO_DIR", AINFRA / "kvs"))
 K8S_TOP_REPO_DIR = Path(os.environ.get("K8S_TOP_REPO_DIR", AINFRA / "k8s-top"))
 AGENT_REPO_DIR = Path(os.environ.get("AGENT_REPO_DIR", AINFRA / "agent"))
 LB_REPO_DIR = Path(os.environ.get("LB_REPO_DIR", AINFRA / "lb"))
+LOLIPOP_REPO_DIR = Path(
+    os.environ.get("LOLIPOP_REPO_DIR", Path.home() / "aiprojects" / "lolipop")
+)
 
 PARTITIONS_LIST: list[str] = [
     "guardian-configs", "opentelemetry", "k8s-top",
-    "doctor", "monitoring", "dev-workspace", "agent", "lb-agent",
+    "doctor", "monitoring", "dev-workspace", "agent", "lb-agent", "lolipop",
 ]
 
 # Each recipe: (image_tag, extra_docker_build_args, build_context_dir)
@@ -86,11 +92,33 @@ BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
           "--build-arg", "BASE_IMAGE=monofs-client:dev-base"],
          AINFRA),
     ],
+    "lolipop": [
+        ("lolipop-frontend:latest", [], LOLIPOP_REPO_DIR / "frontend"),
+        ("lolipop-backend:latest", [], LOLIPOP_REPO_DIR / "backend"),
+        ("lolipop-qwen-tts:latest", [], LOLIPOP_REPO_DIR / "qwen-tts-service"),
+        ("lolipop-lora-trainer:latest", [], LOLIPOP_REPO_DIR / "lora-trainer"),
+        ("lolipop-wangp:latest", [], LOLIPOP_REPO_DIR / "wan2gp-docker"),
+    ],
+}
+
+# Each prepare recipe: (git_repo_root, build_context_dir, staged_dest_dir)
+IMAGEBUILD_PREPARE_RECIPES: dict[str, list[tuple[Path, Path, Path]]] = {
     "agent": [
-        ("lb:latest", [], LB_REPO_DIR),
-        ("lagent-llm:latest", [], AGENT_REPO_DIR / "llm"),
-        ("lagent-backend:latest", [], AGENT_REPO_DIR / "backend"),
-        ("lagent-frontend:latest", [], AGENT_REPO_DIR / "frontend"),
+        (
+            AGENT_REPO_DIR,
+            AGENT_REPO_DIR / "llm",
+            PARTITIONS / "agent" / "payloads" / "sources" / "lagent-llm",
+        ),
+        (
+            AGENT_REPO_DIR,
+            AGENT_REPO_DIR / "backend",
+            PARTITIONS / "agent" / "payloads" / "sources" / "lagent-backend",
+        ),
+        (
+            AGENT_REPO_DIR,
+            AGENT_REPO_DIR / "frontend",
+            PARTITIONS / "agent" / "payloads" / "sources" / "lagent-frontend",
+        ),
     ],
 }
 
@@ -121,6 +149,75 @@ def _resolve(partitions: Iterable[str] | None) -> list[str]:
 
 def _cluster_load_mode(ctx: str) -> bool:
     return ctx == "docker-desktop" or ctx.startswith("kind-")
+
+
+def _kind_cluster_name(ctx: str) -> str | None:
+    """Return the kind cluster name from a kubectl context name, or None."""
+    if ctx.startswith("kind-"):
+        return ctx[len("kind-"):]
+    return None
+
+
+def kind_load_images(images: list[str], dry_run: bool) -> None:
+    """Load images into a kind cluster using `kind load docker-image`.
+
+    This correctly repoints the :latest tag on all nodes to the current local
+    digest, unlike the custom ctr-import path which leaves stale tag pointers.
+
+    After loading, any pods using the updated images are force-deleted so that
+    when Kubernetes reschedules them they pick up the newly tagged digest rather
+    than whatever image ID the kubelet had previously cached.
+    """
+    ctx = kubectl_context()
+    name = _kind_cluster_name(ctx)
+    if not name:
+        return
+    info(f"=== loading bootstrap images into kind cluster {name} ===")
+    for image in images:
+        run(["kind", "load", "docker-image", image, "--name", name], dry_run=dry_run)
+
+    if dry_run:
+        return
+    # Force-delete pods whose image matches any of the loaded images so the
+    # kubelet resolves the tag freshly rather than using the cached old digest.
+    for image in images:
+        repo = image.split(":")[0].split("/")[-1]
+        result = run(
+            [
+                "kubectl", "get", "pods", "--all-namespaces",
+                "-o", f"jsonpath={{.items[?(@.spec.containers[0].image==\"{image}\")].metadata.name}}",
+            ],
+            capture=True,
+            check=False,
+        )
+        # Broader approach: label selector if image query returns nothing
+        label_result = run(
+            [
+                "kubectl", "get", "pods", "--all-namespaces",
+                "-l", f"app={repo}",
+                "-o", "name",
+            ],
+            capture=True,
+            check=False,
+        )
+        if label_result and label_result.stdout.strip():
+            info(f"  force-deleting stale {repo} pods to pick up new image")
+            run(
+                [
+                    "kubectl", "delete", "pods", "--all-namespaces",
+                    "-l", f"app={repo}",
+                    "--force", "--grace-period=0",
+                ],
+                check=False,
+            )
+
+
+def _is_k8s_target_cluster(name: str) -> bool:
+    return name.startswith("k8s-")
+
+
+def _is_docker_target_cluster(name: str) -> bool:
+    return name.startswith("docker-")
 
 
 def _git_output(repo: Path, args: list[str], default: str) -> str:
@@ -156,6 +253,68 @@ def _monofs_build_args() -> list[str]:
         "--build-arg", f"COMMIT={commit}",
         "--build-arg", f"BUILD_TIME={build_time}",
     ]
+
+
+def _list_context_files(repo_root: Path, context_dir: Path) -> list[Path]:
+    try:
+        rel = context_dir.relative_to(repo_root)
+    except ValueError as exc:
+        die(f"build context {context_dir} is not under repo root {repo_root}: {exc}")
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            str(rel),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        files = [
+            repo_root / line.strip()
+            for line in result.stdout.splitlines()
+            if line.strip()
+        ]
+        return [path for path in files if path.is_file()]
+    warn(
+        f"git ls-files failed for {context_dir} ({result.stderr.strip() or result.stdout.strip()}); "
+        "falling back to walking the directory"
+    )
+    return [path for path in context_dir.rglob("*") if path.is_file()]
+
+
+def _stage_imagebuild_context(repo_root: Path, context_dir: Path, dest_dir: Path, dry_run: bool) -> None:
+    if not context_dir.is_dir():
+        die(f"image build context not found: {context_dir}")
+    files = _list_context_files(repo_root, context_dir)
+    if not files:
+        die(f"image build context has no tracked files: {context_dir}")
+    info(f"  stage {context_dir} -> {dest_dir}")
+    if dry_run:
+        return
+    shutil.rmtree(dest_dir, ignore_errors=True)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for src in files:
+        rel = src.relative_to(context_dir)
+        target = dest_dir / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, target)
+
+
+def _prepare_partition(part: str, dry_run: bool) -> None:
+    recipes = IMAGEBUILD_PREPARE_RECIPES.get(part, [])
+    if not recipes:
+        return
+    info(f"[{part}] stage build sources")
+    for repo_root, context_dir, dest_dir in recipes:
+        _stage_imagebuild_context(repo_root, context_dir, dest_dir, dry_run)
 
 
 def _image_repo_name(ref: str) -> str:
@@ -223,14 +382,143 @@ def _partition_targets(part: str) -> list[Path]:
     return targets
 
 
-def _partition_mapping(part: str, registry: str, cluster_load: bool, dry_run: bool) -> dict[str, str]:
+def _partition_intents(part: str) -> list[dict]:
+    intents_dir = PARTITIONS / part / "intents"
+    if not intents_dir.is_dir():
+        return []
+    docs: list[dict] = []
+    for path in sorted(intents_dir.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(path.read_text())
+        except Exception as e:
+            warn(f"skip {path}: {e}")
+            continue
+        if isinstance(data, dict):
+            docs.append(data)
+    return docs
+
+
+def _image_target_clusters(part: str, image_ref: str) -> set[str]:
+    repo = _image_repo_name(image_ref)
+    clusters: set[str] = set()
+    for intent in _partition_intents(part):
+        cluster = intent.get("spec", {}).get("target", {}).get("cluster", "")
+        if not isinstance(cluster, str) or not cluster.strip():
+            continue
+        for asset in intent.get("spec", {}).get("assets", []):
+            if not isinstance(asset, dict):
+                continue
+            image = asset.get("properties", {}).get("image")
+            if isinstance(image, str) and _image_repo_name(image) == repo:
+                clusters.add(cluster.strip())
+    return clusters
+
+
+def _partition_target_clusters(part: str) -> set[str]:
+    clusters: set[str] = set()
+    for intent in _partition_intents(part):
+        cluster = intent.get("spec", {}).get("target", {}).get("cluster", "")
+        if isinstance(cluster, str) and cluster.strip():
+            clusters.add(cluster.strip())
+    return clusters
+
+
+def _image_distribution_mode(part: str, image_ref: str, ctx: str) -> str:
+    clusters = _image_target_clusters(part, image_ref)
+    if not clusters:
+        clusters = _partition_target_clusters(part)
+    if clusters and all(_is_docker_target_cluster(cluster) for cluster in clusters):
+        return "local-docker"
+    if clusters and any(_is_k8s_target_cluster(cluster) for cluster in clusters):
+        return "cluster-load" if _cluster_load_mode(ctx) else "registry-push"
+    return "cluster-load" if _cluster_load_mode(ctx) else "registry-push"
+
+
+def _payload_k8s_path(asset: dict) -> Path | None:
+    rel = asset.get("payload", {}).get("k8s")
+    if not isinstance(rel, str) or not rel.strip():
+        return None
+    return ROOT / rel.lstrip("/")
+
+
+@functools.lru_cache(maxsize=2)
+def _kind_nodes_with_labels(dry_run: bool) -> list[tuple[str, dict[str, str]]]:
+    result = run(["kubectl", "get", "nodes", "-o", "json"], capture=True, check=False, dry_run=False)
+    if not result or result.returncode != 0:
+        die("failed to list cluster nodes via kubectl")
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        die(f"failed to decode kubectl nodes JSON: {e}")
+    nodes: list[tuple[str, dict[str, str]]] = []
+    for item in payload.get("items", []):
+        name = item.get("metadata", {}).get("name")
+        labels = item.get("metadata", {}).get("labels", {})
+        if isinstance(name, str) and name.strip():
+            nodes.append((name, labels if isinstance(labels, dict) else {}))
+    if not nodes:
+        die("no cluster nodes found")
+    return nodes
+
+
+def _asset_target_nodes(asset: dict, nodes_with_labels: list[tuple[str, dict[str, str]]]) -> list[str] | None:
+    payload_path = _payload_k8s_path(asset)
+    if not payload_path or not payload_path.exists():
+        return None
+    try:
+        payload = yaml.safe_load(payload_path.read_text()) or {}
+    except Exception as e:
+        warn(f"skip {payload_path}: {e}")
+        return None
+    selector = payload.get("nodeSelector")
+    if not isinstance(selector, dict) or not selector:
+        return None
+    matched = [
+        name
+        for name, labels in nodes_with_labels
+        if all(labels.get(str(key)) == str(value) for key, value in selector.items())
+    ]
+    if not matched:
+        warn(f"no kind nodes matched nodeSelector in {payload_path}")
+    return matched
+
+
+def _partition_image_target_nodes(part: str, image_ref: str, dry_run: bool) -> list[str] | None:
+    nodes_with_labels = _kind_nodes_with_labels(dry_run)
+    if not nodes_with_labels:
+        return None
+    matched_assets: list[dict] = []
+    for intent in _partition_intents(part):
+        cluster = intent.get("spec", {}).get("target", {}).get("cluster", "")
+        if not isinstance(cluster, str) or not _is_k8s_target_cluster(cluster):
+            continue
+        for asset in intent.get("spec", {}).get("assets", []):
+            if not isinstance(asset, dict):
+                continue
+            image = asset.get("properties", {}).get("image")
+            if isinstance(image, str) and _image_repo_name(image) == _image_repo_name(image_ref):
+                matched_assets.append(asset)
+    if not matched_assets:
+        return None
+    selected: set[str] = set()
+    for asset in matched_assets:
+        nodes = _asset_target_nodes(asset, nodes_with_labels)
+        if nodes is None:
+            return [name for name, _labels in nodes_with_labels]
+        selected.update(nodes)
+    return sorted(selected) if selected else [name for name, _labels in nodes_with_labels]
+
+
+def _partition_mapping(part: str, registry: str, ctx: str, dry_run: bool) -> dict[str, str]:
     mapping: dict[str, str] = {}
     for tag, _e, _c in BUILD_RECIPES.get(part, []):
         repo = tag.split(":", 1)[0]
-        mapping[tag] = _immutable_image_ref(tag, repo, registry, cluster_load, dry_run)
+        mode = _image_distribution_mode(part, tag, ctx)
+        mapping[tag] = _immutable_image_ref(tag, repo, registry, mode in {"cluster-load", "local-docker"}, dry_run)
     for upstream, local in MIRROR_RECIPES.get(part, []):
         repo = local.split(":", 1)[0]
-        mapping[upstream] = _immutable_image_ref(upstream, repo, registry, cluster_load, dry_run)
+        mode = _image_distribution_mode(part, local, ctx)
+        mapping[upstream] = _immutable_image_ref(upstream, repo, registry, mode in {"cluster-load", "local-docker"}, dry_run)
     return mapping
 
 
@@ -293,10 +581,10 @@ def _stamp_file(path: Path, mapping: dict[str, str], dry_run: bool, *, announce:
 
 
 def planned_stamp_changes(partitions: list[str], registry: str, dry_run: bool) -> dict[str, list[tuple[Path, list[tuple[str, str]]]]]:
-    cluster_load = _cluster_load_mode(kubectl_context())
+    ctx = kubectl_context()
     out: dict[str, list[tuple[Path, list[tuple[str, str]]]]] = {}
     for part in partitions:
-        mapping = _partition_mapping(part, registry, cluster_load, dry_run)
+        mapping = _partition_mapping(part, registry, ctx, dry_run)
         if not mapping:
             continue
         file_changes: list[tuple[Path, list[tuple[str, str]]]] = []
@@ -309,34 +597,34 @@ def planned_stamp_changes(partitions: list[str], registry: str, dry_run: bool) -
     return out
 
 
-def _cluster_load(image: str, dry_run: bool) -> None:
-    r = run(["kubectl", "get", "nodes", "-o", "name"], capture=True, check=False, dry_run=dry_run)
+def _cluster_load(image: str, dry_run: bool, nodes: list[str] | None = None, *, force: bool = False) -> None:
+    if nodes is None:
+        nodes = [name for name, _labels in _kind_nodes_with_labels(dry_run)]
     if dry_run:
-        info(f"  (dry-run) would cluster-load {image} into all nodes")
+        info(f"  (dry-run) would cluster-load {image} into: {', '.join(nodes) if nodes else 'no nodes'}")
         return
-    if not r or r.returncode != 0:
-        die("failed to list cluster nodes via kubectl")
-    nodes = [n.split("/", 1)[1] for n in r.stdout.splitlines() if n.strip()]
     if not nodes:
         die("no cluster nodes found")
 
-    # Check which nodes already have the image (in parallel — avoids N serial kubectl-execs).
-    def _needs_load(node: str) -> bool:
-        present = subprocess.run(
-            ["docker", "exec", node, "ctr", "-n=k8s.io", "images", "inspect", image],
-            capture_output=True,
-        )
-        return present.returncode != 0
+    nodes_to_load = list(nodes)
+    if not force:
+        # Check which nodes already have the image (in parallel — avoids N serial kubectl-execs).
+        def _needs_load(node: str) -> bool:
+            present = subprocess.run(
+                ["docker", "exec", node, "ctr", "-n=k8s.io", "images", "inspect", image],
+                capture_output=True,
+            )
+            return present.returncode != 0
 
-    with concurrent.futures.ThreadPoolExecutor() as ex:
-        needs_flags = list(ex.map(_needs_load, nodes))
+        with concurrent.futures.ThreadPoolExecutor() as ex:
+            needs_flags = list(ex.map(_needs_load, nodes))
 
-    nodes_to_load = []
-    for node, need in zip(nodes, needs_flags):
-        if need:
-            nodes_to_load.append(node)
-        else:
-            info(f"  skip {image} (already present) → {node}")
+        nodes_to_load = []
+        for node, need in zip(nodes, needs_flags):
+            if need:
+                nodes_to_load.append(node)
+            else:
+                info(f"  skip {image} (already present) → {node}")
 
     if not nodes_to_load:
         return
@@ -383,9 +671,12 @@ def cmd_list() -> None:
 
 def cmd_build(partitions: list[str], dry_run: bool) -> None:
     for part in partitions:
+        _prepare_partition(part, dry_run)
         recipes = BUILD_RECIPES.get(part, [])
-        if not recipes:
+        if not recipes and not IMAGEBUILD_PREPARE_RECIPES.get(part):
             info(f"[{part}] no local build step")
+            continue
+        if not recipes:
             continue
         info(f"[{part}] build")
         for tag, extra, ctx in recipes:
@@ -395,36 +686,36 @@ def cmd_build(partitions: list[str], dry_run: bool) -> None:
 
 def cmd_push(partitions: list[str], registry: str, dry_run: bool) -> None:
     ctx = kubectl_context()
-    cluster_load = _cluster_load_mode(ctx)
-    info(f"kubectl context: {ctx or '<none>'} "
-         f"({'cluster-load' if cluster_load else 'registry push'})")
+    info(f"kubectl context: {ctx or '<none>'}")
     for part in partitions:
-        info(f"[{part}] {'load' if cluster_load else 'push'}")
+        info(f"[{part}] distribute")
         # Pull mirror images before _partition_mapping so the inspect can succeed.
         for upstream, _local in MIRROR_RECIPES.get(part, []):
             run(["docker", "pull", upstream], dry_run=dry_run)
-        mapping = _partition_mapping(part, registry, cluster_load, dry_run)
+        mapping = _partition_mapping(part, registry, ctx, dry_run)
         for tag, _e, _c in BUILD_RECIPES.get(part, []):
             target = mapping[tag]
+            mode = _image_distribution_mode(part, tag, ctx)
             run(["docker", "tag", tag, target], dry_run=dry_run)
-            if cluster_load:
-                _cluster_load(target, dry_run)
-            else:
+            if mode == "cluster-load":
+                _cluster_load(target, dry_run, nodes=_partition_image_target_nodes(part, tag, dry_run))
+            elif mode == "registry-push":
                 run(["docker", "push", target], dry_run=dry_run)
         for upstream, local in MIRROR_RECIPES.get(part, []):
             target = mapping[upstream]
+            mode = _image_distribution_mode(part, local, ctx)
             run(["docker", "tag", upstream, target], dry_run=dry_run)
-            if cluster_load:
-                _cluster_load(target, dry_run)
-            else:
+            if mode == "cluster-load":
+                _cluster_load(target, dry_run, nodes=_partition_image_target_nodes(part, local, dry_run))
+            elif mode == "registry-push":
                 run(["docker", "push", target], dry_run=dry_run)
 
 
 def cmd_stamp(partitions: list[str], registry: str, dry_run: bool) -> None:
-    cluster_load = _cluster_load_mode(kubectl_context())
+    ctx = kubectl_context()
     for part in partitions:
         info(f"[{part}] stamp")
-        mapping = _partition_mapping(part, registry, cluster_load, dry_run)
+        mapping = _partition_mapping(part, registry, ctx, dry_run)
         if not mapping:
             info("  (no images to stamp)")
             continue

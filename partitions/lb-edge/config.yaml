@@ -1,0 +1,16 @@
+apiVersion: guardian/v1alpha1
+kind: Partition
+metadata:
+  name: lb-edge
+  labels:
+    role: infrastructure
+spec:
+  deletionPolicy: orphan
+  reconciliation:
+    mode: readonly
+    interval: 5m
+  labels:
+    stack: k8s
+    component: lb-edge
+    topology: kubernetes
+    managedBy: st-bootstrap
