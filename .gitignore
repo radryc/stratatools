@@ -16,6 +16,10 @@ bootstrap.local.env
 deploy/bootstrap/.dev-tag
 partitions/agent/payloads/sources/
 partitions/*/payloads/images/
+partitions/*/payloads/sources/lb/edge
+partitions/*/payloads/sources/lb/k8s-agent
+partitions/*/payloads/sources/lb/proxy
+partitions/*/payloads/sources/lb/registry
 partitions/guardian-configs/intents/guardian-aws-pusher.local.yaml
 # partitions/lolipop/  — tracked, see partitions/lolipop/README.md
 .coverage
