@@ -1,0 +1,20 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+    name: images
+spec:
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: monitoring
+    locked: false
+    assets:
+        - type: ImageBuild
+          name: lb-build
+          version: 20260616-1107
+          properties:
+            imageTar: /partitions/monitoring/payloads/images/lb.tar
+            registry: registry.strata.local:5000
+            repository: lb
+            sourceImage: lb:latest

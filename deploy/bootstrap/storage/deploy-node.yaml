@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-${SUFFIX}
+  namespace: ${STORAGE_NAMESPACE}
+  labels:
+    app: monofs-server
+    component: node-${SUFFIX}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: monofs-server
+      component: node-${SUFFIX}
+  template:
+    metadata:
+      labels:
+        app: monofs-server
+        component: node-${SUFFIX}
+    spec:
+      containers:
+        - name: node
+          image: ${MONOFS_SERVER_IMAGE}
+          imagePullPolicy: ${MONOFS_IMAGE_PULL_POLICY}
+          args:
+            - --addr=:9000
+            - --metrics-addr=:9100
+            - --node-id=node-${SUFFIX}
+            - --db-path=/data/db
+            - --logengine-dir=/data/logengine
+            - --git-cache=/data/git
+            - --kvs-data-dir=/data/kvs
+            - --kvs-api-addr=node-${SUFFIX}:9000
+            - --kvs-raft-addr=0.0.0.0:7000
+            - --kvs-raft-advertise-addr=node-${SUFFIX}:7000
+${KVS_EXTRA_ARGS}            - --fetcher=fetcher-a:9200
+            - --fetcher=fetcher-b:9200
+            - --enable-prediction
+            - --log-level=warn
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: MONOFS_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: monofs-secrets
+                  key: monofs-encryption-key
+            - name: MONOFS_OTEL_ENDPOINT
+              value: ${MONOFS_OTEL_ENDPOINT}
+            - name: MONOFS_OTEL_INSECURE
+              value: "${MONOFS_OTEL_INSECURE}"
+            - name: MONOFS_OTEL_SERVICE_NAME
+              value: ${MONOFS_OTEL_SERVICE_NAME}
+            - name: MONOFS_OTEL_METRIC_INTERVAL
+              value: ${MONOFS_OTEL_METRIC_INTERVAL}
+          ports:
+            - name: grpc
+              containerPort: 9000
+            - name: raft
+              containerPort: 7000
+            - name: diagnostics
+              containerPort: 9100
+          readinessProbe:
+            tcpSocket:
+              port: 9000
+          livenessProbe:
+            tcpSocket:
+              port: 9000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: node-${SUFFIX}-data

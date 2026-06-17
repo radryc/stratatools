@@ -1,86 +1,88 @@
 apiVersion: guardian/v1alpha1
 kind: Intent
 metadata:
-  name: ingest
-spec:
-  intentType: standard
-  targetPusher: k8s-main
-  target:
-    cluster: k8s-main
-    namespace: doctor
-  locked: false
-  assets:
-  - type: Volume
-    name: ingest-data
-    version: 20260611-1434
-    properties:
-      accessMode: ReadWriteOnce
-      size: 20Gi
-  - type: Compute
     name: ingest
-    version: 20260611-1434
-    dependsOn:
-    - ingest-data
-    payload:
-      k8s: /partitions/doctor/payloads/ingest.k8s.yaml
-    properties:
-      env:
-        DOCTOR_DEFAULT_TENANT: default
-        DOCTOR_GRPC_ADDR: :4317
-        DOCTOR_HTTP_ADDR: :4318
-        DOCTOR_LOG_BUFFER_FLUSH_INTERVAL: 5s
-        DOCTOR_LOG_BUFFER_MAX_BYTES: '4194304'
-        DOCTOR_LOG_BUFFER_WAL_DIR: /var/lib/doctor/log-buffer
-        DOCTOR_METRIC_BUFFER_FLUSH_INTERVAL: 5s
-        DOCTOR_METRIC_BUFFER_MAX_BYTES: '67108864'
-        DOCTOR_METRIC_BUFFER_WAL_DIR: /var/lib/doctor/metric-buffer
-        DOCTOR_MONOFS_LOGENGINE_ADDR: monofs-external.lb-edge.svc.cluster.local:9090
-        DOCTOR_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
-        DOCTOR_OTEL_INSECURE: 'true'
-        DOCTOR_OTEL_METRIC_INTERVAL: 15s
-        DOCTOR_OTEL_SERVICE_NAME: doctor
-        DOCTOR_PRIVACY_HMAC_KEY: dev-hmac-key-change-in-prod
-        DOCTOR_TENANT_HEADER: X-Doctor-Tenant
-        DOCTOR_TRACE_BUFFER_FLUSH_INTERVAL: 5s
-        DOCTOR_TRACE_BUFFER_MAX_BYTES: '4194304'
-        DOCTOR_TRACE_BUFFER_MAX_RECORDS: '4096'
-        DOCTOR_TRACE_BUFFER_WAL_DIR: /var/lib/doctor/trace-buffer
-      image: doctor-ingest:sha256-a5889de482228b9a
-      imagePullPolicy: IfNotPresent
-      ports:
-      - containerPort: 4317
-        name: otlp-grpc
-        protocol: TCP
-        servicePort: 4317
-      - containerPort: 4318
-        name: otlp-http
-        protocol: TCP
-        servicePort: 4318
-      resources:
-        limits:
-          cpu: '1'
-          memory: 1Gi
-        requests:
-          cpu: 250m
-          memory: 512Mi
-      volumeMounts:
-      - path: /var/lib/doctor
-        volume: ingest-data
-  - type: LoadBalancer
-    name: ingest-edge
-    version: 20260611-1434
-    dependsOn:
-    - ingest
-    payload:
-      k8s: /partitions/doctor/payloads/edge.k8s.yaml
-    properties:
-      listeners:
-      - name: otlp-grpc
-        port: 4317
-        protocol: TCP
-      - name: otlp-http
-        port: 4318
-        protocol: TCP
-      serviceType: LoadBalancer
-      targets:
-      - ingest
+spec:
+    intentType: standard
+    joins:
+        - images
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: doctor
+    locked: false
+    assets:
+        - type: Volume
+          name: ingest-data
+          version: 20260616-1248
+          properties:
+            accessMode: ReadWriteOnce
+            size: 20Gi
+        - type: Compute
+          name: ingest
+          version: 20260616-1248
+          dependsOn:
+            - ingest-data
+          payload:
+            k8s: /partitions/doctor/payloads/ingest.k8s.yaml
+          properties:
+            env:
+                DOCTOR_DEFAULT_TENANT: default
+                DOCTOR_GRPC_ADDR: :4317
+                DOCTOR_HTTP_ADDR: :4318
+                DOCTOR_LOG_BUFFER_FLUSH_INTERVAL: 5s
+                DOCTOR_LOG_BUFFER_MAX_BYTES: "4194304"
+                DOCTOR_LOG_BUFFER_WAL_DIR: /var/lib/doctor/log-buffer
+                DOCTOR_METRIC_BUFFER_FLUSH_INTERVAL: 5s
+                DOCTOR_METRIC_BUFFER_MAX_BYTES: "67108864"
+                DOCTOR_METRIC_BUFFER_WAL_DIR: /var/lib/doctor/metric-buffer
+                DOCTOR_MONOFS_LOGENGINE_ADDR: monofs-external.lb-edge.svc.cluster.local:9090
+                DOCTOR_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
+                DOCTOR_OTEL_INSECURE: "true"
+                DOCTOR_OTEL_METRIC_INTERVAL: 15s
+                DOCTOR_OTEL_SERVICE_NAME: doctor
+                DOCTOR_PRIVACY_HMAC_KEY: dev-hmac-key-change-in-prod
+                DOCTOR_TENANT_HEADER: X-Doctor-Tenant
+                DOCTOR_TRACE_BUFFER_FLUSH_INTERVAL: 5s
+                DOCTOR_TRACE_BUFFER_MAX_BYTES: "4194304"
+                DOCTOR_TRACE_BUFFER_MAX_RECORDS: "4096"
+                DOCTOR_TRACE_BUFFER_WAL_DIR: /var/lib/doctor/trace-buffer
+            image: ${intent.images.outputs.doctor-ingest-build.imageRef}
+            imagePullPolicy: IfNotPresent
+            ports:
+                - containerPort: 4317
+                  name: otlp-grpc
+                  protocol: TCP
+                  servicePort: 4317
+                - containerPort: 4318
+                  name: otlp-http
+                  protocol: TCP
+                  servicePort: 4318
+            resources:
+                limits:
+                    cpu: "1"
+                    memory: 1Gi
+                requests:
+                    cpu: 250m
+                    memory: 512Mi
+            volumeMounts:
+                - path: /var/lib/doctor
+                  volume: ingest-data
+        - type: LoadBalancer
+          name: ingest-edge
+          version: 20260616-1248
+          dependsOn:
+            - ingest
+          payload:
+            k8s: /partitions/doctor/payloads/edge.k8s.yaml
+          properties:
+            listeners:
+                - name: otlp-grpc
+                  port: 4317
+                  protocol: TCP
+                - name: otlp-http
+                  port: 4318
+                  protocol: TCP
+            serviceType: LoadBalancer
+            targets:
+                - ingest

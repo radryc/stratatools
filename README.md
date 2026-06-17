@@ -1,325 +1,241 @@
 # stratatools
 
-> Part of the **Strata** platform.
+> Part of the **Strata** platform — configuration and templates for the MonoFS + Guardian stack.
 
-Toolkit for building and deploying the whole ainfra (Strata) system. Provides:
+The primary CLI tools are Go binaries in the sibling repos: **`guardianctl`** and
+**`monofs-admin`**. stratatools provides the templates, partition configs, and a
+few remaining Python utilities (`st-image`, `st-aws-setup`).
 
-- `st-setup`     — clone required repos, verify kubernetes/docker readiness, and create a local kind cluster when none is reachable
-- `st-aws-setup` — provision IAM Roles Anywhere + CloudFormation deploy IAM roles for AWS pusher runners
-- `st-bootstrap` — phase 1 (storage) + phase 2 (Guardian) cluster bootstrap and install local CLIs into `~/bin`
-- `st-image`     — build / push / stamp partition images
-- `st-release`   — one-shot release pipeline (build → push → stamp → guardianctl)
-
-## Install
+## Quick Start
 
 ```bash
-uv sync
+# 1. Check tools, create kind cluster, generate encryption key
+cd ../guardian && go run ./cmd/guardianctl/ setup run
+
+# 2. Bootstrap MonoFS + Guardian + LB into the cluster
+cd ../guardian && go run ./cmd/guardianctl/ bootstrap init
+
+# 3. Stamp external endpoints into partition configs
+cd ../guardian && go run ./cmd/guardianctl/ bootstrap stamp-urls
+
+# 4. Release all partitions
+cd ../guardian && go run ./cmd/guardianctl/ release run --all --bump
 ```
 
-## What It Does
+After bootstrap, everything runs through Guardian. Port-forwarding exposes:
 
-The intended workflow is to clone only `stratatools`, then let the CLI pull in
-the sibling Strata repositories and drive the platform bring-up in a few
-commands:
-
-1. `st-setup` clones `guardian`, `doctor`, `monofs`, `kvs`, and the other
-   sibling repos beside `stratatools`, ensures a shared `../monofs/.env` with
-   `MONOFS_ENCRYPTION_KEY`, and auto-creates or reuses a local `kind` cluster
-   named `strata` with two workers when no cluster is reachable.
-2. `st-bootstrap` builds the host CLIs, builds the bootstrap MonoFS and
-   Guardian images, and deploys the bootstrap control plane using that same
-   MonoFS encryption key.
-3. `st-release --all --bump` prepares image sources where needed, distributes
-   images or build contexts, and reconciles all managed partitions.
-
-### Optional AWS Setup
-
-If you run the AWS pusher flow, bootstrap AWS prerequisites with:
-
-```bash
-uv run st-aws-setup --aws-profile admin-prod --aws-default-region us-east-1
-```
-
-`admin-prod` is an AWS CLI profile name from `~/.aws/config`.
-In most org setups this is an AWS IAM Identity Center (SSO) profile.
-
-Typical setup:
-
-```bash
-aws configure sso --profile admin-prod
-aws sso login --profile admin-prod
-```
-
-Then run `st-aws-setup` with that profile.
-If you use environment credentials instead of profiles, you can omit
-`--aws-profile` and keep only `--aws-default-region`.
-
-AWS CLI SSO/profile docs:
-https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html
-
-To keep private AWS account details out of git, put AWS bootstrap overrides in
-`bootstrap.local.env`:
-
-```bash
-cp bootstrap.local.env.example bootstrap.local.env
-# edit bootstrap.local.env
-uv run st-bootstrap deploy
-```
-
-`bootstrap.local.env` is git-ignored and is auto-loaded by `st-bootstrap`
-commands (`build`, `deploy`, `rollout`, `stamp-urls`).
-
-AWS pusher deployment is opt-in: it is deployed only when
-# stratatools
-
-> Part of the **Strata** platform.
-
-Toolkit for building and deploying the whole ainfra (Strata) system.
+| Service | Address | Protocol |
+|---------|---------|----------|
+| MonoFS HTTP UI | `http://<host>:8080/` | HTTP |
+| MonoFS gRPC | `<host>:9090` | gRPC |
+| Guardian UI | `http://<host>:8090/` | HTTP |
 
 ## Commands
 
-| Command | Description |
-|---|---|
-| `st-setup` | Clone sibling repos, check prerequisites, auto-create a kind cluster |
-| `st-bootstrap build` | Build local CLI binaries + MonoFS/Guardian container images |
-| `st-bootstrap deploy` | Build + deploy MonoFS storage and Guardian control plane |
-| `st-bootstrap rollout` | Rebuild images and restart existing deployments |
-| `st-bootstrap stamp-urls` | Resolve live endpoints and stamp them into partition configs |
-| `st-bootstrap stop` | Scale all bootstrap deployments to zero |
-| `st-bootstrap destroy` | Delete Guardian and storage namespaces |
-| `st-release` | Prepare/build images as needed, then push partitions to Guardian |
-| `st-image` | Build / push / stamp partition images individually |
-| `st-dogfood` | Ingest local Strata repositories into the running MonoFS cluster |
-| `st-aws-setup` | Provision IAM Roles Anywhere + CloudFormation roles for AWS pusher |
+### guardianctl (Go — primary)
+
+```bash
+# Bootstrap (only part that can't go through Guardian)
+guardianctl bootstrap init                # build images → load into kind → deploy
+guardianctl bootstrap build               # build Docker images for bootstrap components
+guardianctl bootstrap deploy              # apply K8s templates + wait for readiness
+guardianctl bootstrap stop                # scale all deployments to zero
+guardianctl bootstrap destroy             # delete namespaces
+guardianctl bootstrap status              # show component health
+guardianctl bootstrap ports               # start kubectl port-forward
+guardianctl bootstrap stamp-urls          # resolve endpoints → stamp partition configs
+
+# Setup
+guardianctl setup run                     # clone repos, check tools, create kind cluster
+
+# Release (wraps st-image + guardianctl)
+guardianctl release run --all --bump      # release all partitions
+guardianctl release run -p doctor --bump --wait  # release one partition
+
+# Image
+guardianctl image run build --dir partitions/doctor
+guardianctl image run stamp --dir partitions/doctor
+```
+
+### monofs-admin (Go)
+
+```bash
+monofs-admin ingest --router localhost:9090 --source <url> --ref <branch>
+monofs-admin dogfood --router localhost:9090       # ingest all sibling repos
+monofs-admin status --router localhost:9090        # cluster health
+monofs-admin repos --router localhost:8080          # list ingested repos
+```
+
+### Python (remaining)
+
+```bash
+uv run st-image build --partition guardian-configs  # build partition images
+uv run st-image push --partition guardian-configs   # push/stamp images
+uv run st-image stamp --partition guardian-configs
+uv run st-aws-setup --aws-profile admin-prod        # IAM Roles Anywhere provisioning
+```
+
+## Architecture
+
+```
+                  ┌──────────────────────────────────┐
+                  │     guardianctl (Go, primary)      │
+                  │  bootstrap | setup | release       │
+                  └──────────────┬───────────────────┘
+                                 │
+        After bootstrap, everything goes through Guardian
+        (guardianctl partition push → Guardiand → pushers)
+
+  ┌────────────────────────────┐
+  │  deploy/bootstrap/          │  K8s manifests (envsubst-compatible)
+  │  storage/ — 27 templates    │  MonoFS + MinIO + LB
+  │  guardian/ — 10 templates   │  Guardiand + pushers + local registry
+  │  bootstrap.yaml            │  Config with defaults
+  └────────────────────────────┘
+
+  ┌─────────────────────────────────────┐
+  │  src/stratatools/ (Python, secondary) │
+  │  image/       — st-image build/push   │
+  │  aws_setup/   — st-aws-setup          │
+  │  setup/       — legacy helper code    │
+  └─────────────────────────────────────┘
+```
+
+Templates use `${VAR:-default}` syntax and are rendered with `envsubst`.
+The Go bootstrap binary computes all derived values (node addresses, KVS peers,
+LB bootstrap strings) and applies them via `kubectl apply`.
 
 ## Prerequisites
 
-- Docker
-- Go (for building host binaries)
-- `kubectl` + `kind` (for local Kubernetes cluster)
-- `uv` (Python package manager)
-
-Install the Python environment:
+- **Docker** — running daemon
+- **Go** — ≥1.22 (for `guardianctl` and `monofs-admin`)
+- **kubectl** — Kubernetes CLI
+- **kind** — local Kubernetes clusters
+- **uv** — Python package manager (for `st-image` and `st-aws-setup`)
+- **envsubst** — template variable substitution (from `gettext` package)
 
 ```bash
+# Install Python deps (for st-image and st-aws-setup)
 uv sync
 ```
 
-`st-bootstrap build|deploy|rollout` also builds and installs these host binaries
-into `~/bin`:
+## Bootstrap Flow
 
-- `guardianctl`
-- `monofs-client`
-- `monofs-session`
-- `monofs-search`
+1. **Setup**: `guardianctl setup run` — clone sibling repos, check tools, create
+   kind cluster named `strata`, generate `MONOFS_ENCRYPTION_KEY` into `../monofs/.env`
 
-## Step-by-Step Deployment
+2. **Bootstrap init**: `guardianctl bootstrap init` — build Docker images for all
+   bootstrap components (MonoFS server, router, fetcher, search, registry, LB edge,
+   guardiand, pushers), load them into kind, apply 37 K8s templates via `envsubst`,
+   wait for all deployments to become ready
 
-### 1. Clone sibling repos and verify prerequisites
+3. **Stamp URLs**: `guardianctl bootstrap stamp-urls` — resolve lb-edge external
+   endpoints and write them into partition configs so Guardian and external
+   tools can discover MonoFS
 
-```bash
-uv run st-setup
-```
+4. **Release**: `guardianctl release run --all --bump` — bump version tags, build
+   partition images (via `st-image`), stamp immutable refs, push each partition
+   to Guardian, optionally reconcile and wait
 
-This clones `guardian`, `doctor`, `monofs`, `kvs`, `k8s-top`, `agent`,
-`packager`, and `cfg` as siblings of the `stratatools` directory, checks that
-Docker / Go / kubectl / kind are installed, seeds `../monofs/.env` with a new
-`MONOFS_ENCRYPTION_KEY` if one does not exist, and auto-creates a local kind
-cluster named `strata` (2 workers, 3 nodes total) when no Kubernetes cluster is
-reachable.
+## Configuration
 
-### 2. (Optional) Set local overrides
+Defaults are in `deploy/bootstrap/bootstrap.yaml`. Override via environment
+variables (same names as the old Python defaults):
 
-```bash
-cp bootstrap.local.env.example bootstrap.local.env
-# edit bootstrap.local.env
-```
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MONOFS_NAMESPACE` | `monofs` | Storage namespace |
+| `GUARDIAN_NAMESPACE` | `guardian` | Guardian namespace |
+| `LB_NAMESPACE` | `lb-edge` | LB edge namespace |
+| `MONOFS_SERVER_IMAGE` | `monofs-server:latest` | Server image |
+| `GUARDIAN_IMAGE` | `guardian:latest` | Guardiand image |
+| `GUARDIAN_AWS_ACCOUNT` | *(empty)* | Enable AWS pusher when set |
+| `EXTERNAL_SERVICE_IPS` | *(empty)* | Explicit external IPs for services |
+| `GUARDIAN_UI_PORT` | `8090` | Guardian UI port |
+| `EXTERNAL_SERVICE_TYPE` | `LoadBalancer` | K8s service type for external |
 
-`bootstrap.local.env` is git-ignored and auto-loaded by every `st-bootstrap`
-command. Common overrides:
+## Repo Paths
 
-| Variable | Purpose |
-|---|---|
-| `GUARDIAN_AWS_ACCOUNT` | Enable AWS pusher deployment (opt-in) |
-| `MONOFS_PORT_FORWARD_ADDRESS` | Bind address for the managed port-forward (default: `0.0.0.0`; set to `127.0.0.1` for loopback-only) |
-| `EXTERNAL_SERVICE_IP` / `EXTERNAL_SERVICE_IPS` | Publish bootstrap Services on one or more explicit host IPs when no LoadBalancer controller is available |
-| `GUARDIAN_UI_PORT` | Guardian UI port (default: `8090`) |
-| `EXTERNAL_SERVICE_TYPE` | Kubernetes service type for external services (default: `LoadBalancer`) |
+Image builds need the source repos checked out. Each defaults to `<stratatools>/../<name>`:
 
-### 3. (Optional) Set up AWS prerequisites
+| Variable | Default | Used by partition |
+|----------|---------|-------------------|
+| `ST_ROOT` | auto-detected | All — stratatools directory |
+| `GUARDIAN_REPO_DIR` | `../guardian` | guardian-configs |
+| `MONOFS_REPO_DIR` | `../monofs` | guardian-configs, dev-workspace |
+| `DOCTOR_REPO_DIR` | `../doctor` | doctor |
+| `KVS_REPO_DIR` | `../kvs` | guardian-configs |
+| `K8S_TOP_REPO_DIR` | `../k8s-top` | k8s-top |
+| `AGENT_REPO_DIR` | `../agent` | agent |
+| `LB_REPO_DIR` | `../lb` | guardian-configs, opentelemetry, lb-agent |
+| `LOLIPOP_REPO_DIR` | `../lolipop` | lolipop |
 
-Skip this step if you only need a local Kubernetes deployment.
-
-```bash
-# authenticate with AWS SSO
-aws configure sso --profile admin-prod
-aws sso login --profile admin-prod
-
-# provision IAM Roles Anywhere and CloudFormation roles
-uv run st-aws-setup --aws-profile admin-prod --aws-default-region us-east-1
-```
-
-If you use environment credentials instead of a profile, omit `--aws-profile`.
-
-### 4. Deploy the bootstrap control plane
+Set any of these to override when repos live elsewhere:
 
 ```bash
-uv run st-bootstrap deploy
+export LOLIPOP_REPO_DIR=$HOME/aiprojects/lolipop
+export DOCTOR_REPO_DIR=$HOME/src/doctor
+guardianctl release run --partition lolipop
 ```
-
-This builds the host CLIs (`guardianctl`, `monofs-*`) into `~/bin`, builds the
-MonoFS and Guardian container images, loads them into the kind cluster, deploys
-MonoFS storage, the Guardian control plane, and the local Guardian image-build
-registry used by the `agent` ImageBuild pilot, and stamps external endpoints
-into the partition configs.
-
-After deploy completes, all services are accessible through the single lb-edge
-(`monofs-haproxy`) managed port-forward, which binds `0.0.0.0` so it is
-reachable from both `localhost` and the host's LAN IP (e.g. `172.21.63.46` on
-WSL2 `eth0`):
-
-| Service | URL | Protocol |
-|---|---|---|
-| MonoFS HTTP UI / API | `http://<host>:8080/` | HTTP |
-| MonoFS gRPC API | `<host>:9090` | gRPC |
-| Guardian UI | `http://<host>:8090/` | HTTP |
-
-`stamp-urls` automatically detects the host IP and writes it into the
-`guardian-configs` and `doctor` partition configs so `guardianctl` and
-in-cluster services resolve the correct endpoint without further manual
-configuration.
-
-If your cluster has no LoadBalancer controller, set `EXTERNAL_SERVICE_IP` (or
-`EXTERNAL_SERVICE_IPS`) in `bootstrap.local.env` to an existing host IP like
-`172.21.63.46`. Bootstrap will render that address into the external Services
-so `kubectl get svc` shows it in `EXTERNAL-IP`, and stamped URLs will prefer it
-over NodePorts.
-
-To override the bind address set `MONOFS_PORT_FORWARD_ADDRESS` in
-`bootstrap.local.env` (e.g. `127.0.0.1` for loopback-only).
-
-### 5. Release partitions
-
-```bash
-uv run st-release --all --bump
-```
-
-This builds, pushes (or cluster-loads on kind), or stages Guardian-managed
-image build sources as needed, then pushes each partition to Guardian. Use
-`--wait` to block until all partitions converge.
-
-Managed partitions: `agent`, `dev-workspace`, `doctor`, `guardian-configs`,
-`k8s-top`, `lolipop`, `monitoring`, `opentelemetry`.
-
-`agent` is the current pilot for Guardian-native `ImageBuild` assets: its
-`images` intent publishes immutable refs, and the runtime `agent` intent joins
-that intent and consumes `${intent.images.outputs.*.imageRef}` instead of
-checked-in stamped image refs.
-
-If you want to release `agent` **without the Python wrappers**, the raw flow is:
-
-```bash
-# 1. Stage the current agent source trees into the partition bundle
-rm -rf partitions/agent/payloads/sources
-mkdir -p partitions/agent/payloads/sources/lagent-llm \
-         partitions/agent/payloads/sources/lagent-backend \
-         partitions/agent/payloads/sources/lagent-frontend
-cp -R ../agent/llm/. partitions/agent/payloads/sources/lagent-llm/
-cp -R ../agent/backend/. partitions/agent/payloads/sources/lagent-backend/
-cp -R ../agent/frontend/. partitions/agent/payloads/sources/lagent-frontend/
-
-# 2. Point guardianctl at the running bootstrap Guardian
-export GUARDIAN_URL=http://127.0.0.1:8090
-export GUARDIAN_DISCOVERY_TOKEN="$(
-  kubectl -n guardian get secret guardian-secrets \
-    -o jsonpath='{.data.client-discovery-token}' | base64 -d
-)"
-
-# 3. Tag, push, reconcile, and wait
-guardianctl --guardian-url "$GUARDIAN_URL" \
-  --guardian-discovery-token "$GUARDIAN_DISCOVERY_TOKEN" \
-  partition tag --dir ./partitions/agent
-guardianctl --guardian-url "$GUARDIAN_URL" \
-  --guardian-discovery-token "$GUARDIAN_DISCOVERY_TOKEN" \
-  partition push --dir ./partitions/agent
-guardianctl --guardian-url "$GUARDIAN_URL" \
-  --guardian-discovery-token "$GUARDIAN_DISCOVERY_TOKEN" \
-  partition reconcile --partition agent
-guardianctl --guardian-url "$GUARDIAN_URL" \
-  --guardian-discovery-token "$GUARDIAN_DISCOVERY_TOKEN" \
-  partition wait --partition agent
-```
-
-That assumes the bootstrap stack was already updated with `st-bootstrap deploy`
-or `st-bootstrap rollout`, because the new flow depends on the Guardian local
-registry and the updated `guardian-pusher-k8s` image builder.
-
-To release a subset:
-
-```bash
-uv run st-release -p doctor -p monitoring --bump --wait
-```
-
-> **Note:** `lolipop` requires a CUDA-capable GPU and custom images not built
-> by stratatools. Skip it on CPU-only or kind clusters by releasing other
-> partitions explicitly with `-p`.
-
-### Follow-up TODO
-
-- remove the current separate `images` → runtime intent split by teaching
-  Guardian to resolve producer outputs in the same reconcile cycle
-- migrate more partitions from `st-image` stamping to Guardian-native
-  `ImageBuild` assets after the `agent` pilot stabilizes
-
-### 6. Ingest repositories into MonoFS (optional)
-
-```bash
-uv run st-dogfood --router localhost:9090
-```
-
-Ingests the local Strata repositories into the running MonoFS cluster.
-`MONOFS_ENCRYPTION_KEY` must match the key used at bootstrap (it is
-automatically read from `../monofs/.env`).
 
 ## Rebuilding After Changes
 
-To rebuild images and roll out without redeploying the full stack:
-
 ```bash
-uv run st-bootstrap rollout
+cd ../guardian && go run ./cmd/guardianctl/ bootstrap init --skip-build
 ```
 
-To refresh external endpoint stamps in partition configs:
-
-```bash
-uv run st-bootstrap stamp-urls
-```
+This re-applies templates and restarts deployments without rebuilding images. Use
+`bootstrap build` first if image sources changed.
 
 ## Teardown
 
 ```bash
-# scale everything to zero (keeps cluster state)
-uv run st-bootstrap stop
-
-# delete all namespaces and resources
-uv run st-bootstrap destroy
+cd ../guardian && go run ./cmd/guardianctl/ bootstrap stop     # scale to zero
+cd ../guardian && go run ./cmd/guardianctl/ bootstrap destroy  # delete namespaces
 ```
 
 ## Encryption Key
 
-`MONOFS_ENCRYPTION_KEY` is seeded into `../monofs/.env` by `st-setup` and
-reused by all subsequent commands. Do not rotate this key after MonoFS has
-ingested data — existing blob archives will become unreadable until they are
-re-ingested.
+`MONOFS_ENCRYPTION_KEY` (64 hex chars) is generated by `guardianctl setup run`
+into `../monofs/.env`. Never rotate after ingesting data — existing blob
+archives become unreadable.
 
 ## Local Dev Workspace
 
-After `dev-workspace` is released, these entry points become available:
-
+After `dev-workspace` partition is released:
 - **OpenVSCode** — `http://localhost:8888/`
 - **SSH** — `ssh developer@localhost -p 2222`
 
-SSH access requires a public key in the `ssh-authorized-keys` config for the
-`dev-workspace` partition.
+## ImageBuild Modes
 
-See [docs/USAGE.md](docs/USAGE.md) for further detail.
+Guardian supports two ImageBuild modes:
+
+| Mode | Property | How it works |
+|------|----------|-------------|
+| **Source build** | `sourceDir` + `dockerfile` | Guardian stages source, runs `docker build` |
+| **Tar push** | `imageTar` + `sourceImage` | Guardian loads pre-built OCI tar, pushes to registry |
+
+Both produce `imageRef` outputs consumable via `${intent.images.outputs.*.imageRef}`.
+
+Example tar-mode:
+```yaml
+- type: ImageBuild
+  name: guardian-build
+  properties:
+    imageTar: /partitions/guardian-configs/payloads/images/guardian.tar
+    sourceImage: guardian:latest
+    registry: registry.strata.local:5000
+    repository: guardian
+```
+
+## Managed Partitions
+
+`guardian-configs`, `opentelemetry`, `k8s-top`, `doctor`, `monitoring`,
+`dev-workspace`, `agent`, `lb-agent`, `lolipop`
+
+## Testing
+
+```bash
+cd ../guardian && go test ./cmd/guardianctl/           # Go tests
+cd stratatools && uv run python -m unittest discover -s tests  # Python tests
+```

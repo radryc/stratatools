@@ -4,6 +4,8 @@ metadata:
   name: workspace
 spec:
   intentType: standard
+  joins:
+  - images
   targetPusher: k8s-main
   target:
     cluster: k8s-main
@@ -12,25 +14,25 @@ spec:
   assets:
   - type: Volume
     name: workspace-data
-    version: 20260611-1432
+    version: 20260616-1105
     properties:
       accessMode: ReadWriteOnce
       size: 20Gi
   - type: Volume
     name: monofs-state
-    version: 20260611-1432
+    version: 20260616-1105
     properties:
       accessMode: ReadWriteOnce
       size: 10Gi
   - type: Volume
     name: monofs-cache
-    version: 20260611-1432
+    version: 20260616-1105
     properties:
       accessMode: ReadWriteOnce
       size: 10Gi
   - type: Config
     name: ssh-authorized-keys
-    version: 20260611-1432
+    version: 20260616-1105
     properties:
       data:
         authorized_keys: '# replace with your ssh public key to enable SSH access
@@ -39,8 +41,8 @@ spec:
           '
       format: text
   - type: Compute
-    name: vscode
-    version: 20260611-1432
+    name: opencode
+    version: 20260616-1105
     dependsOn:
     - workspace-data
     - monofs-state
@@ -59,16 +61,15 @@ spec:
         GITFS_OVERLAY_DIR: /home/developer/.monofs/overlay
         KUBE_NAMESPACE: dev-workspace
         MONOFS_MOUNT: /mnt/monofs
-        MONOFS_ROUTER: monofs-external.monofs.svc.cluster.local:9090
-        ROUTER_ADDR: monofs-external.monofs.svc.cluster.local:9090
-        VSCODE_CONNECTION_TOKEN: dev-workspace-token-change-me
-        VSCODE_DEFAULT_FOLDER: /workspace/monofs
-        VSCODE_PORT: '8888'
+        MONOFS_ROUTER: monofs-external.lb-edge.svc.cluster.local:9090
+        OPENCODE_HOST: 0.0.0.0
+        OPENCODE_PORT: '8888'
+        ROUTER_ADDR: monofs-external.lb-edge.svc.cluster.local:9090
         WORKSPACE_ROOT: /workspace
       hostBindMounts:
       - source: /dev/fuse
         target: /dev/fuse
-      image: dev-workspace-vscode:sha256-77e88f0098b687d1
+      image: dev-workspace-opencode:sha256-d4ba4786596a96dd
       imagePullPolicy: IfNotPresent
       ports:
       - containerPort: 8888

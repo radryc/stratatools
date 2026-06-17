@@ -1,53 +1,55 @@
 apiVersion: guardian/v1alpha1
 kind: Intent
 metadata:
-  name: lb-edge
+    name: lb-edge
 spec:
-  intentType: standard
-  targetPusher: k8s-main
-  target:
-    cluster: k8s-main
-    namespace: lb-edge
-  assets:
-  - type: Compute
-    name: haproxy
-    properties:
-      observeExisting: true
-      existingDeploymentName: monofs-haproxy
-      image: lb:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 100m
-          memory: 64Mi
-        limits:
-          cpu: "1"
-          memory: 256Mi
-
-  - type: Compute
-    name: lb-k8s-agent
-    properties:
-      observeExisting: true
-      image: lb:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 50m
-          memory: 64Mi
-        limits:
-          cpu: 500m
-          memory: 256Mi
-
-  - type: Compute
-    name: lb-port-sync
-    properties:
-      observeExisting: true
-      image: lb:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 50m
-          memory: 32Mi
-        limits:
-          cpu: 200m
-          memory: 128Mi
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: lb-edge
+    locked: false
+    assets:
+        - type: Compute
+          name: haproxy
+          version: 20260616-1107
+          properties:
+            existingDeploymentName: monofs-haproxy
+            image: lb:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "1"
+                    memory: 256Mi
+                requests:
+                    cpu: 100m
+                    memory: 64Mi
+        - type: Compute
+          name: lb-k8s-agent
+          version: 20260616-1107
+          properties:
+            image: lb:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: 500m
+                    memory: 256Mi
+                requests:
+                    cpu: 50m
+                    memory: 64Mi
+        - type: Compute
+          name: lb-port-sync
+          version: 20260616-1107
+          properties:
+            image: lb:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: 200m
+                    memory: 128Mi
+                requests:
+                    cpu: 50m
+                    memory: 32Mi

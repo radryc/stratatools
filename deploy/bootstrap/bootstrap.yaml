@@ -1,0 +1,109 @@
+# Bootstrap configuration for MonoFS + Guardian + LB edge
+# All values have defaults shown below; override via env vars or bootstrap.yaml.
+
+storage:
+  namespace: monofs
+  clusterId: monofs-cluster
+  nodeNames: [node-a, node-b, node-c, node-d, node-e]
+  routerSuffixes: [a, b]
+
+  images:
+    server: monofs-server:latest
+    router: monofs-router:latest
+    fetcher: monofs-fetcher:latest
+    search: monofs-search:latest
+    registry: monofs-registry:latest
+    lb: lb:latest
+    minio: mirror.gcr.io/minio/minio:latest
+    pullPolicy: IfNotPresent
+
+  pvc:
+    minioSize: "50Gi"
+    fetcherSize: "20Gi"
+    searchSize: "40Gi"
+    nodeSize: "100Gi"
+
+  openTelemetry:
+    endpoint: ""
+    insecure: "true"
+    serviceName: monofs-server
+    metricInterval: "30s"
+
+  external:
+    serviceType: LoadBalancer
+    addressTemplate: ""
+    lbPortMin: 30000
+    lbPortMax: 32767
+
+  registry:
+    defaultUpstream: "https://registry-1.docker.io"
+    upstreams: ""
+
+  # Node external port mapping (for lb-edge to forward)
+  nodeExternalPorts:
+    node-a: "9006"
+    node-b: "9002"
+    node-c: "9003"
+    node-d: "9004"
+    node-e: "9005"
+
+  # Diagnostics addresses
+  searchDiagnosticsAddr: search-index:9101
+  fetcherDiagnosticsAddrs: fetcher-a:9201,fetcher-b:9201
+
+  # User-facing service ports (registered by lb-k8s-agent)
+  userServicePorts: [9191, 8888]
+
+lb:
+  namespace: lb-edge
+  pinToControlPlane: true
+
+guardian:
+  namespace: guardian
+  uiPort: "8090"
+  uiListen: ":8090"
+  uiBaseURL: ""
+
+  images:
+    guardiand: guardian:latest
+    pusherK8s: guardian-pusher-k8s:latest
+    pusherAws: guardian-pusher-aws:latest
+    pusherDocker: guardian-pusher-docker:latest
+    lb: lb:latest
+    pullPolicy: IfNotPresent
+
+  monofs:
+    router: monofs-external.lb-edge.svc.cluster.local:9090
+    useExternalAddresses: "false"
+    clientUseExternalAddresses: "true"
+
+  pushers:
+    k8s:
+      name: k8s-main
+      cluster: k8s-main
+    docker:
+      name: docker-main
+    aws:
+      enabled: false
+      account: ""
+      region: us-east-1
+      assumeRoleName: GuardianCdkDeployRole
+
+  imageBuild:
+    registry: registry.strata.local:5000
+    kanikoMirror: registry.strata.local:5000
+    kanikoDockerConfigSecret: ""
+
+  localRegistry:
+    name: monofs-registry
+    namespace: monofs
+    host: registry.strata.local
+    port: "5000"
+
+  # Port forwarding
+  portForward:
+    http: 8080
+    grpc: 9090
+    ui: 8090
+    admin: 18081
+    address: "0.0.0.0"

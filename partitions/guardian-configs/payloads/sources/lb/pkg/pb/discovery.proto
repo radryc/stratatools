@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package lb.v1;
+
+option go_package = "github.com/rydzu/ainfra/lb/pkg/pb;pb";
+
+service DiscoveryRegistry {
+  rpc RegisterService(RegisterServiceRequest) returns (RegisterServiceResponse);
+  rpc DeregisterService(DeregisterServiceRequest) returns (DeregisterServiceResponse);
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+}
+
+message RegisterServiceRequest {
+  string account = 1;
+  string service_name = 2;
+  string target_ip = 3;
+  int32 target_port = 4;
+  int32 requested_external_port = 5;
+}
+
+message RegisterServiceResponse {
+  int32 external_port = 1;
+}
+
+message DeregisterServiceRequest {
+  string account = 1;
+  string service_name = 2;
+  string target_ip = 3;
+  int32 target_port = 4;
+}
+
+message DeregisterServiceResponse {
+  bool removed = 1;
+}
+
+message ListServicesRequest {}
+
+message Backend {
+  string target_ip = 1;
+  int32 target_port = 2;
+}
+
+message ServiceRoute {
+  string account = 1;
+  string service_name = 2;
+  int32 external_port = 3;
+  repeated Backend backends = 4;
+}
+
+message ListServicesResponse {
+  repeated ServiceRoute services = 1;
+}

@@ -17,15 +17,9 @@ dependencies = [
 
 [project.scripts]
 stratatools = "stratatools.cli:app"
-st-bootstrap = "stratatools.bootstrap:app"
-st-dogfood = "stratatools.dogfood:app"
-st-release = "stratatools.release:app"
 st-image = "stratatools.image:app"
 st-setup = "stratatools.setup:app"
 st-aws-setup = "stratatools.aws_setup:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/stratatools"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/stratatools/templates" = "stratatools/templates"

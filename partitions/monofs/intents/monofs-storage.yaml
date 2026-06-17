@@ -1,164 +1,166 @@
 apiVersion: guardian/v1alpha1
 kind: Intent
 metadata:
-  name: monofs-storage
+    name: monofs-storage
 spec:
-  intentType: standard
-  targetPusher: k8s-main
-  target:
-    cluster: k8s-main
-    namespace: monofs
-  assets:
-  - type: Compute
-    name: minio
-    properties:
-      observeExisting: true
-      image: mirror.gcr.io/minio/minio:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          cpu: "1"
-          memory: 1Gi
-
-  - type: Compute
-    name: fetcher-a
-    properties:
-      observeExisting: true
-      image: monofs-fetcher:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: "1"
-          memory: 512Mi
-
-  - type: Compute
-    name: fetcher-b
-    properties:
-      observeExisting: true
-      image: monofs-fetcher:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: "1"
-          memory: 512Mi
-
-  - type: Compute
-    name: search-index
-    properties:
-      observeExisting: true
-      image: monofs-search:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          cpu: "1"
-          memory: 1Gi
-
-  - type: Compute
-    name: node-a
-    properties:
-      observeExisting: true
-      image: monofs-server:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 200m
-          memory: 256Mi
-        limits:
-          cpu: "2"
-          memory: 2Gi
-
-  - type: Compute
-    name: node-b
-    properties:
-      observeExisting: true
-      image: monofs-server:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 200m
-          memory: 256Mi
-        limits:
-          cpu: "2"
-          memory: 2Gi
-
-  - type: Compute
-    name: node-c
-    properties:
-      observeExisting: true
-      image: monofs-server:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 200m
-          memory: 256Mi
-        limits:
-          cpu: "2"
-          memory: 2Gi
-
-  - type: Compute
-    name: node-d
-    properties:
-      observeExisting: true
-      image: monofs-server:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 200m
-          memory: 256Mi
-        limits:
-          cpu: "2"
-          memory: 2Gi
-
-  - type: Compute
-    name: node-e
-    properties:
-      observeExisting: true
-      image: monofs-server:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 200m
-          memory: 256Mi
-        limits:
-          cpu: "2"
-          memory: 2Gi
-
-  - type: Compute
-    name: router-a
-    properties:
-      observeExisting: true
-      image: monofs-router:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: "1"
-          memory: 512Mi
-
-  - type: Compute
-    name: router-b
-    properties:
-      observeExisting: true
-      image: monofs-router:latest
-      imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: "1"
-          memory: 512Mi
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: monofs
+    locked: false
+    assets:
+        - type: Compute
+          name: minio
+          version: 20260616-1108
+          properties:
+            image: mirror.gcr.io/minio/minio:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "1"
+                    memory: 1Gi
+                requests:
+                    cpu: 100m
+                    memory: 256Mi
+        - type: Compute
+          name: fetcher-a
+          version: 20260616-1108
+          properties:
+            image: monofs-fetcher:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "1"
+                    memory: 512Mi
+                requests:
+                    cpu: 100m
+                    memory: 128Mi
+        - type: Compute
+          name: fetcher-b
+          version: 20260616-1108
+          properties:
+            image: monofs-fetcher:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "1"
+                    memory: 512Mi
+                requests:
+                    cpu: 100m
+                    memory: 128Mi
+        - type: Compute
+          name: search-index
+          version: 20260616-1108
+          properties:
+            image: monofs-search:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "1"
+                    memory: 1Gi
+                requests:
+                    cpu: 100m
+                    memory: 256Mi
+        - type: Compute
+          name: node-a
+          version: 20260616-1108
+          properties:
+            image: monofs-server:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "2"
+                    memory: 2Gi
+                requests:
+                    cpu: 200m
+                    memory: 256Mi
+        - type: Compute
+          name: node-b
+          version: 20260616-1108
+          properties:
+            image: monofs-server:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "2"
+                    memory: 2Gi
+                requests:
+                    cpu: 200m
+                    memory: 256Mi
+        - type: Compute
+          name: node-c
+          version: 20260616-1108
+          properties:
+            image: monofs-server:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "2"
+                    memory: 2Gi
+                requests:
+                    cpu: 200m
+                    memory: 256Mi
+        - type: Compute
+          name: node-d
+          version: 20260616-1108
+          properties:
+            image: monofs-server:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "2"
+                    memory: 2Gi
+                requests:
+                    cpu: 200m
+                    memory: 256Mi
+        - type: Compute
+          name: node-e
+          version: 20260616-1108
+          properties:
+            image: monofs-server:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "2"
+                    memory: 2Gi
+                requests:
+                    cpu: 200m
+                    memory: 256Mi
+        - type: Compute
+          name: router-a
+          version: 20260616-1108
+          properties:
+            image: monofs-router:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "1"
+                    memory: 512Mi
+                requests:
+                    cpu: 100m
+                    memory: 128Mi
+        - type: Compute
+          name: router-b
+          version: 20260616-1108
+          properties:
+            image: monofs-router:latest
+            imagePullPolicy: IfNotPresent
+            observeExisting: true
+            resources:
+                limits:
+                    cpu: "1"
+                    memory: 512Mi
+                requests:
+                    cpu: 100m
+                    memory: 128Mi

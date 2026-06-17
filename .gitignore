@@ -13,9 +13,11 @@ build/
 .registry-push-addr
 .env
 bootstrap.local.env
+deploy/bootstrap/.dev-tag
 partitions/agent/payloads/sources/
+partitions/*/payloads/images/
 partitions/guardian-configs/intents/guardian-aws-pusher.local.yaml
-partitions/lolipop/
+# partitions/lolipop/  — tracked, see partitions/lolipop/README.md
 .coverage
 htmlcov/
 

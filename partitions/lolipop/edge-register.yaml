@@ -1,0 +1,55 @@
+# Lolipop service definitions for edge-lb registration.
+# Used with:  st-bootstrap edge-register --config partitions/lolipop/edge-register.yaml
+#
+# Matches running Docker containers by image name and maps them to edge-lb
+# service entries.  Set ``targetIp`` to override auto-detected container IP
+# (useful when LoadBalancer sidecars publish host ports).
+services:
+  # Frontend — accessed via LoadBalancer sidecar on host port 3400
+  - image: "lolipop-frontend"
+    name: "lolipop-frontend"
+    port: 3400
+    targetIp: "127.0.0.1"
+    account: "lolipop"
+
+  # Backend — no published port, uses container internal IP
+  - image: "lolipop-backend"
+    name: "lolipop-backend"
+    port: 8090
+    account: "lolipop"
+
+  # ChromaDB — internal only
+  - image: "chroma"
+    name: "lolipop-chromadb"
+    port: 8000
+    account: "lolipop"
+
+  # Model runner (llama.cpp) — accessed via LoadBalancer on host port 23434
+  - image: "llama.cpp"
+    containerName: "lolipop-model-runner-"
+    name: "lolipop-model-runner"
+    port: 23434
+    targetIp: "127.0.0.1"
+    account: "lolipop"
+
+  # VL runner (llama.cpp) — accessed via LoadBalancer on host port 23435
+  - image: "llama.cpp"
+    containerName: "vl-runner"
+    name: "lolipop-vl-runner"
+    port: 23435
+    targetIp: "127.0.0.1"
+    account: "lolipop"
+
+  # Wan2GP UI — accessed via LoadBalancer on host port 7860
+  - image: "lolipop-wangp"
+    name: "lolipop-wangp"
+    port: 7860
+    targetIp: "127.0.0.1"
+    account: "lolipop"
+
+  # Wan2GP bridge — accessed via LoadBalancer on host port 7861
+  - image: "lolipop-wangp"
+    name: "lolipop-wangp-bridge"
+    port: 7861
+    targetIp: "127.0.0.1"
+    account: "lolipop"

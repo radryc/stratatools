@@ -19,11 +19,10 @@ fi
 : "${MONOFS_OVERLAY:=${WORKSPACE_HOME}/.monofs/overlay}"
 : "${WORKSPACE_ROOT:=/workspace}"
 : "${MONOFS_WORKSPACE_LINK:=${WORKSPACE_ROOT}/monofs}"
-: "${VSCODE_HOST:=0.0.0.0}"
-: "${VSCODE_PORT:=3000}"
-: "${VSCODE_CONNECTION_TOKEN:=dev-workspace-token-change-me}"
-: "${VSCODE_DEFAULT_FOLDER:=${MONOFS_WORKSPACE_LINK}}"
-: "${VSCODE_EXTENSIONS_DIR:=${WORKSPACE_HOME}/.openvscode-server/extensions}"
+: "${OPENCODE_HOST:=0.0.0.0}"
+: "${OPENCODE_PORT:=8888}"
+: "${OPENCODE_SERVER_PASSWORD:=}"
+: "${OPENCODE_SERVER_USERNAME:=opencode}"
 : "${SSH_PORT:=22}"
 : "${SSH_AUTHORIZED_KEYS_PATH:=/etc/dev-workspace/ssh/authorized_keys}"
 : "${KUBECONFIG:=${WORKSPACE_HOME}/.kube/config}"
@@ -34,9 +33,9 @@ fi
 service_account_dir="/var/run/secrets/kubernetes.io/serviceaccount"
 
 ensure_workspace_layout() {
-  mkdir -p "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$MONOFS_OVERLAY" "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR" "$WORKSPACE_HOME/.ssh"
+  mkdir -p "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$MONOFS_OVERLAY" "$(dirname "$KUBECONFIG")" "${WORKSPACE_HOME}/.config/opencode" "${WORKSPACE_HOME}/.ssh"
   touch "$MONOFS_CLIENT_LOG" "$MONOFS_CLIENT_JSON_LOG"
-  chown -R "$WORKSPACE_USER:$WORKSPACE_GROUP" "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$WORKSPACE_HOME/.monofs" "$WORKSPACE_HOME/.ssh" "$(dirname "$KUBECONFIG")" "$VSCODE_EXTENSIONS_DIR"
+  chown -R "$WORKSPACE_USER:$WORKSPACE_GROUP" "$WORKSPACE_ROOT" "$MONOFS_MOUNT" "$MONOFS_CACHE" "$WORKSPACE_HOME/.monofs" "$WORKSPACE_HOME/.config" "$WORKSPACE_HOME/.ssh" "$(dirname "$KUBECONFIG")" "${WORKSPACE_HOME}/.config/opencode"
   chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$MONOFS_CLIENT_LOG" "$MONOFS_CLIENT_JSON_LOG"
   chmod 700 "$WORKSPACE_HOME/.ssh"
 
@@ -48,7 +47,7 @@ ensure_workspace_layout() {
 
   if [[ ! -e "$WORKSPACE_ROOT/README.monofs.txt" ]]; then
     cat >"$WORKSPACE_ROOT/README.monofs.txt" <<'EOF'
-MonoFS VS Code workspace
+MonoFS OpenCode workspace
 
 - MonoFS mount is exposed at ./monofs
 - Remote SSH login is available as developer when the partition's ssh-authorized-keys config is populated
@@ -56,6 +55,7 @@ MonoFS VS Code workspace
 - Show pending changes: mfs status
 - Commit changes: mfs commit
 - kubectl uses an in-cluster kubeconfig generated on container start
+- OpenCode web UI is available at the exposed HTTP port
 EOF
     chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$WORKSPACE_ROOT/README.monofs.txt"
   fi
@@ -115,6 +115,280 @@ configure_ssh_access() {
   echo "[workspace] no SSH public keys configured; Remote SSH login will remain disabled" >&2
 }
 
+write_opencode_config() {
+  local cfg="${WORKSPACE_HOME}/.config/opencode/config.json"
+  if [[ -f "$cfg" ]]; then
+    return 0
+  fi
+
+  cat >"$cfg" <<'JSON'
+{
+  "model": "deepseek/deepseek-chat",
+  "permission": {
+    "skill": {
+      "*": "allow"
+    }
+  },
+  "server": {
+    "hostname": "0.0.0.0",
+    "port": 8888
+  }
+}
+JSON
+  chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$cfg"
+  echo "[workspace] wrote default OpenCode config to $cfg" >&2
+}
+
+install_skills() {
+  local skills_dst="${WORKSPACE_HOME}/.agents/skills"
+
+  mkdir -p "$skills_dst"
+  chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$skills_dst" "$(dirname "$skills_dst")"
+
+  # Skip if already installed (detected by marker)
+  if [[ -f "$skills_dst/.installed" ]]; then
+    return 0
+  fi
+
+  echo "[workspace] installing agent skills" >&2
+
+  # strata-partition — creating/maintaining partitions, intents, assets
+  mkdir -p "$skills_dst/strata-partition"
+  cat >"$skills_dst/strata-partition/SKILL.md" <<'SKILL'
+---
+name: strata-partition
+description: >
+  Create, modify, and maintain Strata partitions — Guardian desired-state YAML
+  documents that define Kubernetes workloads via intents and assets (Compute,
+  Volume, Config, ImageBuild). Use when creating a new partition, adding an
+  intent or asset, releasing a partition, stamping image refs, or debugging
+  partition reconciliation.
+---
+
+# Strata Partition Workflow
+
+## Creating a new partition
+
+1. Copy from `partitions/_template/`
+2. Edit `config.yaml` (Kind: Partition)
+3. Add to `PARTITIONS_LIST` in `src/stratatools/image/__init__.py`
+4. Add image recipes to `BUILD_RECIPES` or `IMAGE_TAR_RECIPES` if needed
+
+## Asset types
+
+- **Compute** — K8s deployment, references a payload `.k8s.yaml` snippet
+- **Volume** — PVC spec (size, accessMode)
+- **Config** — text data mounted into pods (e.g. SSH keys)
+- **ImageBuild** — OCI tar or source-based build
+
+## Building & Releasing
+
+```bash
+uv run st-image build --partition <name>
+uv run st-image push --partition <name>
+uv run st-image stamp --partition <name>
+uv run st-release -p <name> --bump --wait
+```
+
+## Edge exposure
+
+Add to K8s payload: `serviceAnnotations: { guardian.intent/expose: 'true' }`
+SKILL
+  chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$skills_dst/strata-partition/SKILL.md"
+
+  # strata-monofs — MonoFS development flow
+  mkdir -p "$skills_dst/strata-monofs"
+  cat >"$skills_dst/strata-monofs/SKILL.md" <<'SKILL'
+---
+name: strata-monofs
+description: >
+  MonoFS development flow — build, test, debug, and release the MonoFS
+  FUSE-backed virtual filesystem. Use when working in the monofs sibling
+  repo, debugging FUSE mount issues, building images, or changing the
+  MonoFS protocol.
+---
+
+# MonoFS Development Flow
+
+## Building
+
+```bash
+cd ../monofs
+bazel build //cmd/...
+bazel test //...
+```
+
+## Docker image build (via stratatools)
+
+```bash
+uv run st-image build --partition dev-workspace
+docker build -t monofs-client:dev-base --target client ../monofs
+```
+
+## Running monofs-client
+
+```bash
+monofs-client --router=<addr> --mount=/mnt/monofs --virtual-monorepo --writable
+```
+
+## Write sessions (mfs)
+
+```bash
+mfs setup --mount /mnt/monofs
+mfs start; mfs status; mfs commit
+```
+
+## Debugging FUSE
+
+```bash
+mountpoint -q /mnt/monofs
+tail -f /var/log/monofs-client.json
+strace -p $(pgrep monofs-client) -f -e trace=file
+```
+SKILL
+  chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$skills_dst/strata-monofs/SKILL.md"
+
+  # strata-bootstrap — bootstrap/deployment workflows
+  mkdir -p "$skills_dst/strata-bootstrap"
+  cat >"$skills_dst/strata-bootstrap/SKILL.md" <<'SKILL'
+---
+name: strata-bootstrap
+description: >
+  Bootstrap and manage the Strata development cluster. Use when setting up
+  the dev environment, debugging bootstrap failures, managing cluster state,
+  or configuring storage/guardian phases.
+---
+
+# Strata Bootstrap
+
+```bash
+uv run st-setup                  # Clone repos + create kind cluster
+uv run st-bootstrap build        # Build Go CLIs + Docker images
+uv run st-bootstrap deploy       # Full deploy (build → load → deploy → stamp)
+uv run st-bootstrap rollout      # Rebuild images + restart deployments
+uv run st-bootstrap stop         # Scale to zero
+uv run st-bootstrap destroy      # Delete namespaces
+```
+
+## Env config
+
+`bootstrap.local.env` (gitignored). Key vars:
+- `LB_USER_SERVICE_PORTS` — forwarded ports (default: 9191 8888)
+- `GUARDIAN_REPO_DIR`, `MONOFS_REPO_DIR` — sibling repo paths
+- `MONOFS_ENCRYPTION_KEY` — 64-char hex from `../monofs/.env`
+
+## Debugging
+
+- ImagePullBackOff → run `st-image push`
+- CrashLoopBackOff → check logs, FUSE device, permissions
+- Pending → check PVC binding, node resources
+SKILL
+  chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$skills_dst/strata-bootstrap/SKILL.md"
+
+  # go-development — Go patterns
+  mkdir -p "$skills_dst/go-development"
+  cat >"$skills_dst/go-development/SKILL.md" <<'SKILL'
+---
+name: go-development
+description: >
+  Go development patterns — module management, Bazel builds, testing,
+  error wrapping, context propagation, gRPC. Use when writing or modifying
+  Go code, fixing build errors, writing Go tests, or working with protobuf.
+---
+
+# Go Development
+
+## Build (Bazel)
+
+```bash
+bazel build //cmd/...
+bazel test //...
+```
+
+## Testing
+
+```bash
+go test ./...
+go test -v -run TestFoo ./pkg/
+go test -race ./...
+```
+
+## Patterns
+
+- Wrap errors: `fmt.Errorf("op failed: %w", err)`
+- Context: `ctx, cancel := context.WithTimeout(...)`
+- Table-driven tests preferred
+SKILL
+  chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$skills_dst/go-development/SKILL.md"
+
+  # python-typer — Python/Typer patterns
+  mkdir -p "$skills_dst/python-typer"
+  cat >"$skills_dst/python-typer/SKILL.md" <<'SKILL'
+---
+name: python-typer
+description: >
+  Python development with uv, Typer CLI, and unittest. Use when modifying
+  Python CLI code, adding commands, writing tests, or debugging shell-out
+  patterns in Typer apps.
+---
+
+# Python / Typer (stratatools)
+
+## Module structure
+
+```
+src/stratatools/<name>/__init__.py  # exports Typer app
+```
+
+## CLI patterns
+
+```python
+from stratatools.util import info, run, warn, die
+run(["kubectl", "apply", "-f", m], dry_run=dry_run)
+```
+
+## Testing
+
+```bash
+python -m unittest tests.test_foo
+python -m unittest discover -s tests
+```
+SKILL
+  chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$skills_dst/python-typer/SKILL.md"
+
+  # kubernetes-debug — K8s debugging
+  mkdir -p "$skills_dst/kubernetes-debug"
+  cat >"$skills_dst/kubernetes-debug/SKILL.md" <<'SKILL'
+---
+name: kubernetes-debug
+description: >
+  Debug Kubernetes deployments, pods, services, and networking in kind
+  clusters. Use when pods are failing, services are unreachable, RBAC
+  denies access, or resources are not applying correctly.
+---
+
+# Kubernetes Debugging
+
+```bash
+kubectl get pods -A
+kubectl describe pod <name> -n <ns>
+kubectl logs <pod> -n <ns> --previous
+kubectl get events -A --sort-by='.lastTimestamp'
+```
+
+## Common fixes
+
+- ImagePullBackOff → `kind load docker-image <img> --name strata`
+- CrashLoopBackOff → check FUSE device, privileged mode, env vars
+- Pending → check PVC, `kubectl get pvc -A`
+- RBAC denied → `kubectl auth can-i --list -n <ns>`
+SKILL
+  chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$skills_dst/kubernetes-debug/SKILL.md"
+
+  touch "$skills_dst/.installed"
+  chown "$WORKSPACE_USER:$WORKSPACE_GROUP" "$skills_dst/.installed"
+}
+
 start_monofs_client() {
   echo "[workspace] starting monofs-client against ${ROUTER_ADDR}" >&2
   su - "$WORKSPACE_USER" -c "/usr/local/bin/monofs-client \
@@ -154,36 +428,42 @@ start_sshd() {
   /usr/sbin/sshd -o Port="$SSH_PORT"
 }
 
-start_vscode() {
+start_opencode() {
   local cmd=(
     env
-    MONOFS_VSCODE_PROFILE=devWorkspacePartition
     MONOFS_BINARY_DIR=/usr/local/bin
     MONOFS_ROUTER="$ROUTER_ADDR"
     MONOFS_MOUNT="$MONOFS_MOUNT"
     MONOFS_OVERLAY="$MONOFS_OVERLAY"
     MONOFS_CACHE="$MONOFS_CACHE"
     MONOFS_WORKSPACE_ROOT="$WORKSPACE_ROOT"
-    openvscode-server
-    --host "$VSCODE_HOST"
-    --port "$VSCODE_PORT"
+    HOME="$WORKSPACE_HOME"
+    USER="$WORKSPACE_USER"
   )
 
-  if [[ -n "$VSCODE_CONNECTION_TOKEN" ]]; then
-    cmd+=(--connection-token "$VSCODE_CONNECTION_TOKEN")
-  else
-    cmd+=(--without-connection-token)
+  if [[ -n "${OPENCODE_SERVER_PASSWORD:-}" ]]; then
+    cmd+=("OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD}")
+    if [[ -n "${OPENCODE_SERVER_USERNAME:-}" ]]; then
+      cmd+=("OPENCODE_SERVER_USERNAME=${OPENCODE_SERVER_USERNAME}")
+    fi
   fi
 
-  cmd+=(--extensions-dir "$VSCODE_EXTENSIONS_DIR")
-  cmd+=("$VSCODE_DEFAULT_FOLDER")
+  cmd+=(
+    opencode
+    web
+    --hostname "$OPENCODE_HOST"
+    --port "$OPENCODE_PORT"
+  )
+
   exec su - "$WORKSPACE_USER" -c "$(printf '%q ' "${cmd[@]}")"
 }
 
 ensure_workspace_layout
 write_kubeconfig
 configure_ssh_access
+write_opencode_config
+install_skills
 start_monofs_client
 wait_for_mount
 start_sshd
-start_vscode
+start_opencode

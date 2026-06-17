@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: monofs-registry
+  namespace: ${STORAGE_NAMESPACE}
+  labels:
+    app: monofs-registry
+spec:
+  type: ClusterIP
+  selector:
+    app: monofs-registry
+  ports:
+    - port: 5000
+      targetPort: 5000
+      name: registry

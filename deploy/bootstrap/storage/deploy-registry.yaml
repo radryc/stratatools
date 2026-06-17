@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: monofs-registry
+  namespace: ${STORAGE_NAMESPACE}
+  labels:
+    app: monofs-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: monofs-registry
+  template:
+    metadata:
+      labels:
+        app: monofs-registry
+    spec:
+      containers:
+        - name: registry
+          image: ${MONOFS_REGISTRY_IMAGE}
+          imagePullPolicy: ${MONOFS_IMAGE_PULL_POLICY}
+          ports:
+            - containerPort: 5000
+              name: registry
+          env:
+            - name: MONOFS_ROUTER_ADDR
+              value: "${MONOFS_REGISTRY_ROUTER_ADDR}"
+            - name: MONOFS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: monofs-secrets
+                  key: monofs-token
+            - name: MONOFS_REGISTRY_DEFAULT_UPSTREAM
+              value: "${MONOFS_REGISTRY_DEFAULT_UPSTREAM}"
+            - name: MONOFS_REGISTRY_UPSTREAMS
+              value: "${MONOFS_REGISTRY_UPSTREAMS}"

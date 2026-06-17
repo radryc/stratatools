@@ -1,0 +1,36 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+    name: images
+spec:
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: doctor
+    locked: false
+    assets:
+        - type: ImageBuild
+          name: lb-build
+          version: 20260616-1248
+          properties:
+            imageTar: /partitions/doctor/payloads/images/lb.tar
+            registry: registry.strata.local:5000
+            repository: lb
+            sourceImage: lb:latest
+        - type: ImageBuild
+          name: doctor-ingest-build
+          version: 20260616-1248
+          properties:
+            imageTar: /partitions/doctor/payloads/images/doctor.tar
+            registry: registry.strata.local:5000
+            repository: doctor-ingest
+            sourceImage: doctor:latest
+        - type: ImageBuild
+          name: doctor-query-build
+          version: 20260616-1248
+          properties:
+            imageTar: /partitions/doctor/payloads/images/doctor.tar
+            registry: registry.strata.local:5000
+            repository: doctor-query
+            sourceImage: doctor:latest

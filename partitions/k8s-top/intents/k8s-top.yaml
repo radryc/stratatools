@@ -1,34 +1,36 @@
 apiVersion: guardian/v1alpha1
 kind: Intent
 metadata:
-  name: k8s-top
-spec:
-  intentType: standard
-  targetPusher: k8s-main
-  target:
-    cluster: k8s-main
-    namespace: k8s-top
-  locked: false
-  assets:
-  - type: Compute
     name: k8s-top
-    version: 20260611-1435
-    payload:
-      k8s: /partitions/k8s-top/payloads/k8s-top.k8s.yaml
-    properties:
-      env:
-        K8S_TOP_CLUSTER_NAME: k8s-main
-        K8S_TOP_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
-        K8S_TOP_OTEL_INSECURE: 'true'
-        K8S_TOP_OTEL_METRIC_INTERVAL: 15s
-        K8S_TOP_OTEL_SERVICE_NAME: k8s-top
-        K8S_TOP_POLL_INTERVAL: 15s
-      image: k8s-top:sha256-c2de6eb75222f65e
-      imagePullPolicy: IfNotPresent
-      resources:
-        limits:
-          cpu: 500m
-          memory: 256Mi
-        requests:
-          cpu: 100m
-          memory: 128Mi
+spec:
+    intentType: standard
+    joins:
+        - images
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: k8s-top
+    locked: false
+    assets:
+        - type: Compute
+          name: k8s-top
+          version: 20260616-1107
+          payload:
+            k8s: /partitions/k8s-top/payloads/k8s-top.k8s.yaml
+          properties:
+            env:
+                K8S_TOP_CLUSTER_NAME: k8s-main
+                K8S_TOP_OTEL_ENDPOINT: k8s-svc-compute-k8s-main-otel-opentelemetry-collector-collector.otel.svc.cluster.local:4317
+                K8S_TOP_OTEL_INSECURE: "true"
+                K8S_TOP_OTEL_METRIC_INTERVAL: 15s
+                K8S_TOP_OTEL_SERVICE_NAME: k8s-top
+                K8S_TOP_POLL_INTERVAL: 15s
+            image: ${intent.images.outputs.k8s-top-build.imageRef}
+            imagePullPolicy: IfNotPresent
+            resources:
+                limits:
+                    cpu: 500m
+                    memory: 256Mi
+                requests:
+                    cpu: 100m
+                    memory: 128Mi

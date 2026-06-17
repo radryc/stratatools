@@ -9,7 +9,7 @@ from pathlib import Path
 
 from stratatools.util import ROOT
 
-AINFRA = ROOT.parent
+ST_ROOT = Path(os.environ.get("ST_ROOT", ROOT.parent))
 KEY_NAME = "MONOFS_ENCRYPTION_KEY"
 
 
@@ -24,7 +24,7 @@ class MonofsEncryptionKeyState:
 def monofs_repo_dir(repo_dir: Path | None = None) -> Path:
     if repo_dir is not None:
         return Path(repo_dir).expanduser()
-    return Path(os.environ.get("MONOFS_REPO_DIR", str(AINFRA / "monofs"))).expanduser()
+    return Path(os.environ.get("MONOFS_REPO_DIR", str(ST_ROOT / "monofs"))).expanduser()
 
 
 def monofs_env_file(repo_dir: Path | None = None) -> Path:

@@ -1,0 +1,21 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+    name: images
+spec:
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: otel
+    locked: false
+    assets:
+        - type: ImageBuild
+          name: lb-build
+          version: 20260616-1108
+          properties:
+            dockerfile: Dockerfile
+            platform: linux/amd64
+            registry: registry.strata.local:5000
+            repository: lb
+            sourceDir: /partitions/opentelemetry/payloads/sources/lb

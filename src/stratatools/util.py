@@ -9,7 +9,6 @@ from typing import NoReturn
 
 ROOT = Path(__file__).resolve().parents[2]            # stratatools repo root
 PARTITIONS = ROOT / "partitions"
-TEMPLATES = Path(__file__).resolve().parent / "templates"
 
 
 def info(msg: str) -> None:

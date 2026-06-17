@@ -1,0 +1,114 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+  name: core
+spec:
+  intentType: standard
+  targetPusher: docker-main
+  target:
+    cluster: docker-main
+  locked: false
+  assets:
+  - type: Volume
+    name: lolipop-chroma
+    version: 20260616-1548
+    properties:
+      accessMode: ReadWriteOnce
+      size: 10Gi
+  - type: Compute
+    name: lolipop-chromadb
+    version: 20260616-1548
+    dependsOn:
+    - lolipop-chroma
+    properties:
+      env:
+        ANONYMIZED_TELEMETRY: 'FALSE'
+        IS_PERSISTENT: 'TRUE'
+        PERSIST_DIRECTORY: /chroma/chroma
+      image: chromadb/chroma:latest
+      ports:
+      - containerPort: 8000
+        name: http
+        protocol: TCP
+      volumeMounts:
+      - path: /chroma/chroma
+        volume: lolipop-chroma
+  - type: Compute
+    name: lolipop-qwen-tts
+    version: 20260616-1548
+    properties:
+      env:
+        NVIDIA_VISIBLE_DEVICES: all
+      gpus: all
+      hostBindMounts:
+      - source: /mnt/e/models/lolipop/cache/huggingface
+        target: /root/.cache/huggingface
+      image: lolipop-qwen-tts:sha256-7a0e588ced35b392
+      ports:
+      - containerPort: 8092
+        name: http
+        protocol: TCP
+  - type: Compute
+    name: lolipop-backend
+    version: 20260616-1548
+    dependsOn:
+    - lolipop-chromadb
+    - lolipop-qwen-tts
+    properties:
+      env:
+        CHROMADB_ENDPOINT: http://lolipop-chromadb:8000
+        DB_PATH: /data/db/lolipop.db
+        EMBEDDING_MODEL: nomic-embed-text
+        FRONTEND_URL: http://localhost:3400
+        GUARDIAN_DEPLOY_NONCE: 20260526-1624
+        LLM_API_PATH: /v1/chat/completions
+        LLM_ENDPOINT: http://lolipop-model-runner:12434
+        LLM_MODEL: Qwen3.5-9B
+        MAX_CONTEXT_TOKENS: '6000'
+        MEDIA_PATH: /data/media
+        PORT: '8090'
+        QWEN_TTS_ENDPOINT: http://lolipop-qwen-tts:8092
+        UPLOAD_PATH: /data/uploads
+        VLM_ENDPOINT: http://lolipop-vl-runner:12435
+        VLM_MODEL: Qwen3VL-8B
+        VOICES_PATH: /data/voices
+        WANGP_BRIDGE_ENDPOINT: http://lolipop-wangp:7861
+        WANGP_ENDPOINT: http://lolipop-wangp:7860
+        WORLD_BIBLE_TOKEN_BUDGET: '1000'
+      hostBindMounts:
+      - source: /mnt/e/models/lolipop/db
+        target: /data/db
+      - source: /mnt/e/models/lolipop/media
+        target: /data/media
+      - source: /mnt/e/models/lolipop/uploads
+        target: /data/uploads
+      - source: /mnt/e/models/lolipop/voices
+        target: /data/voices
+      image: lolipop-backend:sha256-d0f0dad6a243eac6
+      ports:
+      - containerPort: 8090
+        name: http
+        protocol: TCP
+  - type: Compute
+    name: lolipop-frontend
+    version: 20260616-1548
+    dependsOn:
+    - lolipop-backend
+    properties:
+      image: lolipop-frontend:sha256-76b4f29c95962add
+      ports:
+      - containerPort: 3000
+        name: http
+        protocol: TCP
+  - type: LoadBalancer
+    name: lolipop-edge
+    version: 20260616-1548
+    dependsOn:
+    - lolipop-frontend
+    properties:
+      listeners:
+      - name: http
+        port: 3400
+        protocol: TCP
+      targets:
+      - lolipop-frontend

@@ -22,108 +22,175 @@ import yaml
 from stratatools.util import PARTITIONS, ROOT, die, info, kubectl_context, run, warn
 
 # Repo layout -----------------------------------------------------------------
-AINFRA = ROOT.parent
-GUARDIAN_REPO_DIR = Path(os.environ.get("GUARDIAN_REPO_DIR", AINFRA / "guardian"))
-MONOFS_REPO_DIR = Path(os.environ.get("MONOFS_REPO_DIR", AINFRA / "monofs"))
-DOCTOR_REPO_DIR = Path(os.environ.get("DOCTOR_REPO_DIR", AINFRA / "doctor"))
-KVS_REPO_DIR = Path(os.environ.get("KVS_REPO_DIR", AINFRA / "kvs"))
-K8S_TOP_REPO_DIR = Path(os.environ.get("K8S_TOP_REPO_DIR", AINFRA / "k8s-top"))
-AGENT_REPO_DIR = Path(os.environ.get("AGENT_REPO_DIR", AINFRA / "agent"))
-LB_REPO_DIR = Path(os.environ.get("LB_REPO_DIR", AINFRA / "lb"))
-LOLIPOP_REPO_DIR = Path(
-    os.environ.get("LOLIPOP_REPO_DIR", Path.home() / "aiprojects" / "lolipop")
-)
+ST_ROOT = Path(os.environ.get("ST_ROOT", ROOT.parent))
+
+
+def _repo(name: str) -> Path:
+    override = os.environ.get("PARTITION_REPO")
+    if override:
+        return Path(override)
+    return ST_ROOT / name
 
 PARTITIONS_LIST: list[str] = [
     "guardian-configs", "opentelemetry", "k8s-top",
     "doctor", "monitoring", "dev-workspace", "agent", "lb-agent", "lolipop",
 ]
 
+# Functions needed early for constant definitions --------------------------------
+def _git_output(repo: Path, args: list[str], default: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return default
+    value = result.stdout.strip()
+    return value or default
+
+
+def _monofs_build_args() -> list[str]:
+    version = os.environ.get("MONOFS_BUILD_VERSION") or os.environ.get("BUILD_VERSION") or "dev"
+    commit = (
+        os.environ.get("MONOFS_BUILD_COMMIT")
+        or os.environ.get("BUILD_COMMIT")
+        or _git_output(_repo("monofs"), ["rev-parse", "--short=12", "HEAD"], "unknown")
+    )
+    dirty = _git_output(_repo("monofs"), ["status", "--porcelain"], "")
+    if dirty and not commit.endswith("-dirty"):
+        commit = f"{commit}-dirty"
+    build_time = (
+        os.environ.get("MONOFS_BUILD_TIME")
+        or os.environ.get("BUILD_TIME")
+        or datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    )
+    return [
+        "--build-arg", f"VERSION={version}",
+        "--build-arg", f"COMMIT={commit}",
+        "--build-arg", f"BUILD_TIME={build_time}",
+    ]
+
+
 # Each recipe: (image_tag, extra_docker_build_args, build_context_dir)
 BUILD_RECIPES: dict[str, list[tuple[str, list[str], Path]]] = {
-    "guardian-configs": [
-        ("guardian:latest",
-         ["--build-context", f"monofs={MONOFS_REPO_DIR}",
-          "--build-context", f"kvs={KVS_REPO_DIR}"],
-         GUARDIAN_REPO_DIR),
-        ("lb:latest", [], LB_REPO_DIR),
-        ("guardian-pusher-k8s:latest",
-         ["-f", str(GUARDIAN_REPO_DIR / "Dockerfile.pusher-k8s"),
-          "--build-context", f"monofs={MONOFS_REPO_DIR}",
-          "--build-context", f"kvs={KVS_REPO_DIR}"],
-         GUARDIAN_REPO_DIR),
-        ("guardian-pusher-aws:latest",
-         ["-f", str(GUARDIAN_REPO_DIR / "Dockerfile.pusher-aws"),
-          "--build-context", f"monofs={MONOFS_REPO_DIR}",
-          "--build-context", f"kvs={KVS_REPO_DIR}"],
-         GUARDIAN_REPO_DIR),
-        ("guardian-pusher-docker:latest",
-         ["-f", str(GUARDIAN_REPO_DIR / "Dockerfile.pusher-docker"),
-          "--build-context", f"monofs={MONOFS_REPO_DIR}",
-          "--build-context", f"kvs={KVS_REPO_DIR}"],
-         GUARDIAN_REPO_DIR),
-    ],
-    "opentelemetry": [
-        ("lb:latest", [], LB_REPO_DIR),
-    ],
-    "k8s-top": [
-        ("k8s-top:latest", ["-f", str(K8S_TOP_REPO_DIR / "Dockerfile")], AINFRA),
-    ],
-    "doctor": [
-        ("lb:latest", [], LB_REPO_DIR),
-        ("doctor-ingest:latest",
-         ["--build-arg", "DOCTOR_SERVICE=doctor-ingest", "--build-context", f"monofs={MONOFS_REPO_DIR}"],
-         DOCTOR_REPO_DIR),
-        ("doctor-query:latest",
-         ["--build-arg", "DOCTOR_SERVICE=doctor-query", "--build-context", f"monofs={MONOFS_REPO_DIR}"],
-         DOCTOR_REPO_DIR),
-    ],
-    "monitoring": [
-        ("lb:latest", [], LB_REPO_DIR),
-    ],
-    "lb-agent": [
-        ("lb:latest", [], LB_REPO_DIR),
+    "lolipop": [
+        ("lolipop-frontend:latest", [], _repo("lolipop") / "frontend"),
+        ("lolipop-backend:latest", [], _repo("lolipop") / "backend"),
+        ("lolipop-qwen-tts:latest", [], _repo("lolipop") / "qwen-tts-service"),
+        ("lolipop-lora-trainer:latest", [], _repo("lolipop") / "lora-trainer"),
+        ("lolipop-wangp:latest", [], _repo("lolipop") / "wan2gp-docker"),
     ],
     "dev-workspace": [
-        ("lb:latest", [], LB_REPO_DIR),
-        ("monofs-client:dev-base", ["--target", "client"], MONOFS_REPO_DIR),
-        ("dev-workspace-vscode:latest",
+        ("monofs-client:dev-base", ["--target", "client"], _repo("monofs")),
+        ("dev-workspace-opencode:latest",
          ["-f", str(ROOT / "images" / "dev-workspace-vscode" / "Dockerfile"),
           "--build-arg", "BASE_IMAGE=monofs-client:dev-base"],
-         AINFRA),
+         ST_ROOT),
     ],
-    "lolipop": [
-        ("lolipop-frontend:latest", [], LOLIPOP_REPO_DIR / "frontend"),
-        ("lolipop-backend:latest", [], LOLIPOP_REPO_DIR / "backend"),
-        ("lolipop-qwen-tts:latest", [], LOLIPOP_REPO_DIR / "qwen-tts-service"),
-        ("lolipop-lora-trainer:latest", [], LOLIPOP_REPO_DIR / "lora-trainer"),
-        ("lolipop-wangp:latest", [], LOLIPOP_REPO_DIR / "wan2gp-docker"),
+}
+
+# Each tar recipe: (local_tag, dockerfile_rel, build_args, context_dir, tar_dest_dir, tar_filename, source_image, build_contexts)
+# build_contexts: dict of BuildKit named context name -> path (for COPY --from=<name>), or None
+IMAGE_TAR_RECIPES: dict[str, list[tuple[str, str, list[str], Path, Path, str, str, dict[str, Path] | None]]] = {
+    "guardian-configs": [
+        ("guardian:latest", "Dockerfile", _monofs_build_args(),
+         _repo("guardian"),
+         PARTITIONS / "guardian-configs" / "payloads" / "images",
+         "guardian.tar", "guardian:latest",
+         {"monofs": _repo("monofs"), "kvs": _repo("kvs")}),
+        ("guardian-pusher-k8s:latest", "Dockerfile.pusher-k8s", [],
+         _repo("guardian"),
+         PARTITIONS / "guardian-configs" / "payloads" / "images",
+         "guardian-pusher-k8s.tar", "guardian-pusher-k8s:latest",
+         {"monofs": _repo("monofs"), "kvs": _repo("kvs")}),
+        ("guardian-pusher-aws:latest", "Dockerfile.pusher-aws", [],
+         _repo("guardian"),
+         PARTITIONS / "guardian-configs" / "payloads" / "images",
+         "guardian-pusher-aws.tar", "guardian-pusher-aws:latest",
+         {"monofs": _repo("monofs"), "kvs": _repo("kvs")}),
+        ("guardian-pusher-docker:latest", "Dockerfile.pusher-docker", [],
+         _repo("guardian"),
+         PARTITIONS / "guardian-configs" / "payloads" / "images",
+         "guardian-pusher-docker.tar", "guardian-pusher-docker:latest",
+         {"monofs": _repo("monofs"), "kvs": _repo("kvs")}),
+        ("lb:latest", "Dockerfile", [],
+         _repo("lb"),
+         PARTITIONS / "guardian-configs" / "payloads" / "images",
+         "lb.tar", "lb:latest",
+         None),
+    ],
+    "dev-workspace": [
+        ("lb:latest", "Dockerfile", [],
+         _repo("lb"),
+         PARTITIONS / "dev-workspace" / "payloads" / "images",
+         "lb.tar", "lb:latest",
+         None),
+    ],
+    "monitoring": [
+        ("lb:latest", "Dockerfile", [],
+         _repo("lb"),
+         PARTITIONS / "monitoring" / "payloads" / "images",
+         "lb.tar", "lb:latest",
+         None),
+    ],
+    "k8s-top": [
+        ("k8s-top:latest", "k8s-top/Dockerfile", [],
+         _repo("k8s-top").parent,
+         PARTITIONS / "k8s-top" / "payloads" / "images",
+         "k8s-top.tar", "k8s-top:latest",
+         None),
+    ],
+    "agent": [
+        ("lagent-llm:latest", "Dockerfile", [],
+         _repo("agent") / "llm",
+         PARTITIONS / "agent" / "payloads" / "images",
+         "lagent-llm.tar", "lagent-llm:latest",
+         None),
+        ("lagent-backend:latest", "Dockerfile", [],
+         _repo("agent") / "backend",
+         PARTITIONS / "agent" / "payloads" / "images",
+         "lagent-backend.tar", "lagent-backend:latest",
+         None),
+        ("lagent-frontend:latest", "Dockerfile", [],
+         _repo("agent") / "frontend",
+         PARTITIONS / "agent" / "payloads" / "images",
+         "lagent-frontend.tar", "lagent-frontend:latest",
+         None),
+    ],
+    "doctor": [
+        ("doctor:latest", "Dockerfile", [],
+         _repo("doctor"),
+         PARTITIONS / "doctor" / "payloads" / "images",
+         "doctor.tar", "doctor:latest",
+         {"monofs": _repo("monofs")}),
+        ("lb:latest", "Dockerfile", [],
+         _repo("lb"),
+         PARTITIONS / "doctor" / "payloads" / "images",
+         "lb.tar", "lb:latest",
+         None),
     ],
 }
 
 # Each prepare recipe: (git_repo_root, build_context_dir, staged_dest_dir)
 IMAGEBUILD_PREPARE_RECIPES: dict[str, list[tuple[Path, Path, Path]]] = {
-    "agent": [
-        (
-            AGENT_REPO_DIR,
-            AGENT_REPO_DIR / "llm",
-            PARTITIONS / "agent" / "payloads" / "sources" / "lagent-llm",
-        ),
-        (
-            AGENT_REPO_DIR,
-            AGENT_REPO_DIR / "backend",
-            PARTITIONS / "agent" / "payloads" / "sources" / "lagent-backend",
-        ),
-        (
-            AGENT_REPO_DIR,
-            AGENT_REPO_DIR / "frontend",
-            PARTITIONS / "agent" / "payloads" / "sources" / "lagent-frontend",
-        ),
+    "opentelemetry": [
+        (_repo("lb"), _repo("lb"), PARTITIONS / "opentelemetry" / "payloads" / "sources" / "lb"),
+    ],
+    "lb-agent": [
+        (_repo("lb"), _repo("lb"), PARTITIONS / "lb-agent" / "payloads" / "sources" / "lb"),
     ],
 }
 
 OTEL_UPSTREAM = "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.108.0"
 GRAFANA_UPSTREAM = "mirror.gcr.io/grafana/grafana:13.0.0"
+
+# Partitions whose Dockerfiles use BuildKit named build contexts (COPY --from=<name>)
+# that need rewriting to local directory paths for kaniko ImageBuild.
+_KANIKO_BUILD_CONTEXT_PATCH: dict[str, list[str]] = {
+    "guardian-configs": ["monofs", "kvs"],
+    "doctor": ["monofs"],
+}
 
 # (upstream_ref, local_repo:tag-without-registry)
 MIRROR_RECIPES: dict[str, list[tuple[str, str]]] = {
@@ -220,41 +287,6 @@ def _is_docker_target_cluster(name: str) -> bool:
     return name.startswith("docker-")
 
 
-def _git_output(repo: Path, args: list[str], default: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(repo), *args],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return default
-    value = result.stdout.strip()
-    return value or default
-
-
-def _monofs_build_args() -> list[str]:
-    version = os.environ.get("MONOFS_BUILD_VERSION") or os.environ.get("BUILD_VERSION") or "dev"
-    commit = (
-        os.environ.get("MONOFS_BUILD_COMMIT")
-        or os.environ.get("BUILD_COMMIT")
-        or _git_output(MONOFS_REPO_DIR, ["rev-parse", "--short=12", "HEAD"], "unknown")
-    )
-    dirty = _git_output(MONOFS_REPO_DIR, ["status", "--porcelain"], "")
-    if dirty and not commit.endswith("-dirty"):
-        commit = f"{commit}-dirty"
-    build_time = (
-        os.environ.get("MONOFS_BUILD_TIME")
-        or os.environ.get("BUILD_TIME")
-        or datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-    )
-    return [
-        "--build-arg", f"VERSION={version}",
-        "--build-arg", f"COMMIT={commit}",
-        "--build-arg", f"BUILD_TIME={build_time}",
-    ]
-
-
 def _list_context_files(repo_root: Path, context_dir: Path) -> list[Path]:
     try:
         rel = context_dir.relative_to(repo_root)
@@ -290,7 +322,7 @@ def _list_context_files(repo_root: Path, context_dir: Path) -> list[Path]:
     return [path for path in context_dir.rglob("*") if path.is_file()]
 
 
-def _stage_imagebuild_context(repo_root: Path, context_dir: Path, dest_dir: Path, dry_run: bool) -> None:
+def _stage_imagebuild_context(repo_root: Path, context_dir: Path, dest_dir: Path, dry_run: bool, *, append: bool = False) -> None:
     if not context_dir.is_dir():
         die(f"image build context not found: {context_dir}")
     files = _list_context_files(repo_root, context_dir)
@@ -299,13 +331,37 @@ def _stage_imagebuild_context(repo_root: Path, context_dir: Path, dest_dir: Path
     info(f"  stage {context_dir} -> {dest_dir}")
     if dry_run:
         return
-    shutil.rmtree(dest_dir, ignore_errors=True)
+    if not append:
+        shutil.rmtree(dest_dir, ignore_errors=True)
     dest_dir.mkdir(parents=True, exist_ok=True)
     for src in files:
         rel = src.relative_to(context_dir)
         target = dest_dir / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, target)
+
+
+def _patch_build_contexts(part: str, contexts: list[str], dry_run: bool) -> None:
+    part_dir = PARTITIONS / part / "payloads" / "sources"
+    if not part_dir.is_dir():
+        return
+    for dockerfile_path in sorted(part_dir.rglob("Dockerfile*")):
+        if not dockerfile_path.is_file():
+            continue
+        content = dockerfile_path.read_text()
+        modified = False
+        for ctx in contexts:
+            old = f"COPY --from={ctx} "
+            new = f"COPY {ctx}/"
+            if old in content:
+                content = content.replace(old, new)
+                modified = True
+        if modified:
+            if dry_run:
+                info(f"  (dry-run) would patch build contexts in {dockerfile_path.relative_to(ROOT)}")
+            else:
+                dockerfile_path.write_text(content)
+                info(f"  patched build contexts in {dockerfile_path.relative_to(ROOT)}")
 
 
 def _prepare_partition(part: str, dry_run: bool) -> None:
@@ -315,6 +371,9 @@ def _prepare_partition(part: str, dry_run: bool) -> None:
     info(f"[{part}] stage build sources")
     for repo_root, context_dir, dest_dir in recipes:
         _stage_imagebuild_context(repo_root, context_dir, dest_dir, dry_run)
+    contexts = _KANIKO_BUILD_CONTEXT_PATCH.get(part)
+    if contexts:
+        _patch_build_contexts(part, contexts, dry_run)
 
 
 def _image_repo_name(ref: str) -> str:
@@ -672,16 +731,30 @@ def cmd_list() -> None:
 def cmd_build(partitions: list[str], dry_run: bool) -> None:
     for part in partitions:
         _prepare_partition(part, dry_run)
-        recipes = BUILD_RECIPES.get(part, [])
-        if not recipes and not IMAGEBUILD_PREPARE_RECIPES.get(part):
+        local_recipes = BUILD_RECIPES.get(part, [])
+        tar_recipes = IMAGE_TAR_RECIPES.get(part, [])
+        if not local_recipes and not tar_recipes and not IMAGEBUILD_PREPARE_RECIPES.get(part):
             info(f"[{part}] no local build step")
             continue
-        if not recipes:
-            continue
-        info(f"[{part}] build")
-        for tag, extra, ctx in recipes:
-            build_args = _monofs_build_args() if ctx == MONOFS_REPO_DIR else []
+        if local_recipes or tar_recipes:
+            info(f"[{part}] build")
+        for tag, extra, ctx in local_recipes:
+            build_args = _monofs_build_args() if ctx == _repo("monofs") else []
             run(["docker", "build", "-t", tag, *extra, *build_args, str(ctx)], dry_run=dry_run)
+        for tag, dockerfile, build_args, ctx, tar_dest_dir, tar_filename, source_image, build_contexts in tar_recipes:
+            dockerfile_path = ctx / dockerfile
+            full_args = ["docker", "build", "-t", tag, "-f", str(dockerfile_path)]
+            if build_contexts:
+                for name, path in build_contexts.items():
+                    full_args.extend(["--build-context", f"{name}={path}"])
+            full_args.extend(build_args)
+            full_args.append(str(ctx))
+            run(full_args, dry_run=dry_run)
+            tar_dest = tar_dest_dir / tar_filename
+            info(f"  save {tag} -> {tar_dest}")
+            if not dry_run:
+                tar_dest.parent.mkdir(parents=True, exist_ok=True)
+            run(["docker", "save", "-o", str(tar_dest), tag], dry_run=dry_run)
 
 
 def cmd_push(partitions: list[str], registry: str, dry_run: bool) -> None:

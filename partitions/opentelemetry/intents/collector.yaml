@@ -4,6 +4,8 @@ metadata:
     name: collector
 spec:
     intentType: standard
+    joins:
+        - images
     targetPusher: k8s-main
     target:
         cluster: k8s-main
@@ -12,7 +14,7 @@ spec:
     assets:
         - type: Config
           name: collector-config
-          version: 20260611-1459
+          version: 20260616-1108
           properties:
             data:
                 otel-collector.yaml: |
@@ -147,7 +149,7 @@ spec:
             format: yaml
         - type: Compute
           name: collector
-          version: 20260611-1459
+          version: 20260616-1108
           dependsOn:
             - collector-config
           payload:

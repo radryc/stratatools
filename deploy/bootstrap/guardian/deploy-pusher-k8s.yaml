@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guardian-pusher-k8s
+  namespace: ${GUARDIAN_NAMESPACE}
+  labels:
+    app: guardian-pusher-k8s
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: guardian-pusher-k8s
+  template:
+    metadata:
+      labels:
+        app: guardian-pusher-k8s
+    spec:
+      serviceAccountName: guardian
+${LOCAL_REGISTRY_HOST_ALIASES}
+      containers:
+        - name: pusher
+          image: ${GUARDIAN_PUSHER_IMAGE}
+          imagePullPolicy: ${GUARDIAN_IMAGE_PULL_POLICY}
+          env:
+            - name: GUARDIAN_PUSHER_NAME
+              value: "${GUARDIAN_PUSHER_NAME}"
+            - name: GUARDIAN_CLUSTER
+              value: "${GUARDIAN_CLUSTER}"
+            - name: GUARDIAN_LB_IMAGE
+              value: "${GUARDIAN_LB_IMAGE}"
+            - name: GUARDIAN_MONOFS_ROUTER
+              value: "${GUARDIAN_MONOFS_ROUTER}"
+            - name: GUARDIAN_MONOFS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: guardian-secrets
+                  key: monofs-token
+            - name: GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES
+              value: "${GUARDIAN_MONOFS_USE_EXTERNAL_ADDRESSES}"
+            - name: GUARDIAN_IMAGE_BUILD_REGISTRY
+              value: "${GUARDIAN_IMAGE_BUILD_REGISTRY}"
+            - name: GUARDIAN_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: GUARDIAN_KANIKO_IMAGE
+              value: "gcr.io/kaniko-project/executor:v1.24.0"
+            - name: GUARDIAN_KANIKO_REGISTRY_MIRROR
+              value: "${GUARDIAN_KANIKO_REGISTRY_MIRROR}"
+            - name: GUARDIAN_KANIKO_DOCKER_CONFIG_SECRET
+              value: "${GUARDIAN_KANIKO_DOCKER_CONFIG_SECRET}"

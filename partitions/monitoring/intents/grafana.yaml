@@ -4,6 +4,8 @@ metadata:
     name: grafana
 spec:
     intentType: standard
+    joins:
+        - images
     targetPusher: k8s-main
     target:
         cluster: k8s-main
@@ -12,7 +14,7 @@ spec:
     assets:
         - type: Config
           name: grafana-datasources
-          version: 20260611-1459
+          version: 20260616-1107
           properties:
             data:
                 datasources.yaml: |
@@ -59,7 +61,7 @@ spec:
             format: yaml
         - type: Config
           name: grafana-dashboards-provider
-          version: 20260611-1459
+          version: 20260616-1107
           properties:
             data:
                 dashboards.yaml: |
@@ -108,7 +110,7 @@ spec:
             format: yaml
         - type: Config
           name: grafana-dashboards-monofs
-          version: 20260611-1459
+          version: 20260616-1107
           properties:
             data:
                 monofs-comprehensive-health.json: |
@@ -852,7 +854,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-guardian
-          version: 20260611-1459
+          version: 20260616-1107
           properties:
             data:
                 guardian-comprehensive-health.json: |
@@ -1213,7 +1215,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-doctor
-          version: 20260611-1459
+          version: 20260616-1107
           properties:
             data:
                 doctor-comprehensive-health.json: |
@@ -2056,7 +2058,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-system
-          version: 20260611-1459
+          version: 20260616-1107
           properties:
             data:
                 k8s-cluster-resource-watch.json: |
@@ -3245,7 +3247,7 @@ spec:
             format: json
         - type: Config
           name: grafana-dashboards-guardian-rollouts
-          version: 20260611-1459
+          version: 20260616-1107
           properties:
             data:
                 guardian-intent-rollout-correlation.json: |
@@ -3629,12 +3631,12 @@ spec:
             format: json
         - type: Volume
           name: grafana-storage
-          version: 20260611-1459
+          version: 20260616-1107
           properties:
             ephemeral: true
         - type: Compute
           name: grafana
-          version: 20260611-1459
+          version: 20260616-1107
           dependsOn:
             - grafana-datasources
             - grafana-dashboards-provider

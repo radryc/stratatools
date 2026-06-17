@@ -1,0 +1,52 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+    name: images
+spec:
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: guardian-configs
+    locked: false
+    assets:
+        - type: ImageBuild
+          name: guardian-build
+          version: 20260616-1107
+          properties:
+            imageTar: /partitions/guardian-configs/payloads/images/guardian.tar
+            registry: registry.strata.local:5000
+            repository: guardian
+            sourceImage: guardian:latest
+        - type: ImageBuild
+          name: guardian-pusher-k8s-build
+          version: 20260616-1107
+          properties:
+            imageTar: /partitions/guardian-configs/payloads/images/guardian-pusher-k8s.tar
+            registry: registry.strata.local:5000
+            repository: guardian-pusher-k8s
+            sourceImage: guardian-pusher-k8s:latest
+        - type: ImageBuild
+          name: guardian-pusher-aws-build
+          version: 20260616-1107
+          properties:
+            imageTar: /partitions/guardian-configs/payloads/images/guardian-pusher-aws.tar
+            registry: registry.strata.local:5000
+            repository: guardian-pusher-aws
+            sourceImage: guardian-pusher-aws:latest
+        - type: ImageBuild
+          name: guardian-pusher-docker-build
+          version: 20260616-1107
+          properties:
+            imageTar: /partitions/guardian-configs/payloads/images/guardian-pusher-docker.tar
+            registry: registry.strata.local:5000
+            repository: guardian-pusher-docker
+            sourceImage: guardian-pusher-docker:latest
+        - type: ImageBuild
+          name: lb-build
+          version: 20260616-1107
+          properties:
+            imageTar: /partitions/guardian-configs/payloads/images/lb.tar
+            registry: registry.strata.local:5000
+            repository: lb
+            sourceImage: lb:latest

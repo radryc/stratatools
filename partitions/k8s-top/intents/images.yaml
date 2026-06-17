@@ -1,0 +1,20 @@
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
+    name: images
+spec:
+    intentType: standard
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: k8s-top
+    locked: false
+    assets:
+        - type: ImageBuild
+          name: k8s-top-build
+          version: 20260616-1107
+          properties:
+            imageTar: /partitions/k8s-top/payloads/images/k8s-top.tar
+            registry: registry.strata.local:5000
+            repository: k8s-top
+            sourceImage: k8s-top:latest

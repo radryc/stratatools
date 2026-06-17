@@ -4,6 +4,8 @@ metadata:
   name: lb-agent
 spec:
   intentType: standard
+  joins:
+  - images
   targetPusher: k8s-main
   target:
     cluster: k8s-main
@@ -16,7 +18,7 @@ spec:
     payload:
       k8s: /partitions/lb-agent/payloads/k8s-agent.k8s.yaml
     properties:
-      image: lb:sha256-de1f51ff61237fad
+      image: ${intent.images.outputs.lb-build.imageRef}
       imagePullPolicy: IfNotPresent
       resources:
         limits:

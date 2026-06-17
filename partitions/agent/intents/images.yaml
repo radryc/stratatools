@@ -12,28 +12,25 @@ spec:
     assets:
         - type: ImageBuild
           name: lagent-llm-build
-          version: 20260611-1432
+          version: 20260617-0821
           properties:
-            dockerfile: Dockerfile
-            platform: linux/amd64
+            imageTar: /partitions/agent/payloads/images/lagent-llm.tar
             registry: registry.strata.local:5000
             repository: lagent-llm
-            sourceDir: /partitions/agent/payloads/sources/lagent-llm
+            sourceImage: lagent-llm:latest
         - type: ImageBuild
           name: lagent-backend-build
-          version: 20260611-1432
+          version: 20260617-0821
           properties:
-            dockerfile: Dockerfile
-            platform: linux/amd64
+            imageTar: /partitions/agent/payloads/images/lagent-backend.tar
             registry: registry.strata.local:5000
             repository: lagent-backend
-            sourceDir: /partitions/agent/payloads/sources/lagent-backend
+            sourceImage: lagent-backend:latest
         - type: ImageBuild
           name: lagent-frontend-build
-          version: 20260611-1432
+          version: 20260617-0821
           properties:
-            dockerfile: Dockerfile
-            platform: linux/amd64
+            imageTar: /partitions/agent/payloads/images/lagent-frontend.tar
             registry: registry.strata.local:5000
             repository: lagent-frontend
-            sourceDir: /partitions/agent/payloads/sources/lagent-frontend
+            sourceImage: lagent-frontend:latest

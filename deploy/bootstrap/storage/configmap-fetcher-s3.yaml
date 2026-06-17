@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fetcher-s3-config
+  namespace: ${STORAGE_NAMESPACE}
+data:
+  fetcher-s3.json: |
+    {
+      "storage": {
+        "type": "s3",
+        "s3_region": "us-east-1",
+        "s3_bucket": "monofs",
+        "s3_endpoint": "http://minio:9000",
+        "s3_use_path_style": true
+      }
+    }

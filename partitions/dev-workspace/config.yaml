@@ -14,4 +14,4 @@ spec:
     component: dev-workspace
     topology: kubernetes
     managedBy: guardian
-    endpoint: http://k8s-svc-lb-k8s-main-dev-workspace-workspace-vscode-edge.dev-workspace.svc.cluster.local:8888
+    endpoint: http://k8s-svc-lb-k8s-main-dev-workspace-workspace-opencode-edge.dev-workspace.svc.cluster.local:8888

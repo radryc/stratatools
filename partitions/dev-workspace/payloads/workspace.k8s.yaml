@@ -1,5 +1,5 @@
-image: dev-workspace-vscode:sha256-77e88f0098b687d1
+image: dev-workspace-opencode:sha256-d4ba4786596a96dd
 serviceAnnotations:
   guardian.intent/expose: 'true'
-  guardian.intent/service-name: vscode-edge
+  guardian.intent/service-name: opencode-edge
   guardian.intent/external-port: '8888'

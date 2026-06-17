@@ -1,4 +1,3 @@
-image: lb:sha256-de1f51ff61237fad
 command:
 - /usr/local/bin/lb-k8s-agent
 args:
