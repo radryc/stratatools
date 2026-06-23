@@ -30,3 +30,7 @@ htmlcov/
 *.swo
 keys.txt
 mytoken.txt
+partitions/lolipop/
+*.tar
+partitions/monitoring/payloads/sources/lb/
+partitions/lb-agent/payloads/sources/lb/
