@@ -12,25 +12,25 @@ spec:
     assets:
         - type: ImageBuild
           name: lb-build
-          version: 20260616-1248
+          version: 20260624-1558
           properties:
             imageTar: /partitions/doctor/payloads/images/lb.tar
             registry: registry.strata.local:5000
             repository: lb
-            sourceImage: lb:latest
+            sourceImage: lb:d4a28ab
         - type: ImageBuild
           name: doctor-ingest-build
-          version: 20260616-1248
+          version: 20260624-1558
           properties:
             imageTar: /partitions/doctor/payloads/images/doctor.tar
             registry: registry.strata.local:5000
             repository: doctor-ingest
-            sourceImage: doctor:latest
+            sourceImage: doctor-ingest:latest
         - type: ImageBuild
           name: doctor-query-build
-          version: 20260616-1248
+          version: 20260624-1558
           properties:
             imageTar: /partitions/doctor/payloads/images/doctor.tar
             registry: registry.strata.local:5000
             repository: doctor-query
-            sourceImage: doctor:latest
+            sourceImage: doctor-query:latest

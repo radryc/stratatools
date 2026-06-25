@@ -12,41 +12,41 @@ spec:
     assets:
         - type: ImageBuild
           name: guardian-build
-          version: 20260616-1107
+          version: 20260624-1558
           properties:
             imageTar: /partitions/guardian-configs/payloads/images/guardian.tar
             registry: registry.strata.local:5000
             repository: guardian
-            sourceImage: guardian:latest
+            sourceImage: guardian:d4a28ab
         - type: ImageBuild
           name: guardian-pusher-k8s-build
-          version: 20260616-1107
+          version: 20260624-1558
           properties:
             imageTar: /partitions/guardian-configs/payloads/images/guardian-pusher-k8s.tar
             registry: registry.strata.local:5000
             repository: guardian-pusher-k8s
-            sourceImage: guardian-pusher-k8s:latest
+            sourceImage: guardian-pusher-k8s:d4a28ab
         - type: ImageBuild
           name: guardian-pusher-aws-build
-          version: 20260616-1107
+          version: 20260624-1558
           properties:
             imageTar: /partitions/guardian-configs/payloads/images/guardian-pusher-aws.tar
             registry: registry.strata.local:5000
             repository: guardian-pusher-aws
-            sourceImage: guardian-pusher-aws:latest
+            sourceImage: guardian-pusher-aws:d4a28ab
         - type: ImageBuild
           name: guardian-pusher-docker-build
-          version: 20260616-1107
+          version: 20260624-1558
           properties:
             imageTar: /partitions/guardian-configs/payloads/images/guardian-pusher-docker.tar
             registry: registry.strata.local:5000
             repository: guardian-pusher-docker
-            sourceImage: guardian-pusher-docker:latest
+            sourceImage: guardian-pusher-docker:d4a28ab
         - type: ImageBuild
           name: lb-build
-          version: 20260616-1107
+          version: 20260624-1558
           properties:
             imageTar: /partitions/guardian-configs/payloads/images/lb.tar
             registry: registry.strata.local:5000
             repository: lb
-            sourceImage: lb:latest
+            sourceImage: lb:d4a28ab

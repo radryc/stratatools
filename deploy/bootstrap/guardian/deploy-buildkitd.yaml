@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildkitd
+  namespace: ${GUARDIAN_NAMESPACE}
+  labels:
+    app: buildkitd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: buildkitd
+  template:
+    metadata:
+      labels:
+        app: buildkitd
+    spec:
+      containers:
+        - name: buildkitd
+          image: ${BUILDKITD_IMAGE}
+          imagePullPolicy: ${GUARDIAN_IMAGE_PULL_POLICY}
+          args:
+            - --addr
+            - unix:///run/buildkit/buildkitd.sock
+            - --addr
+            - tcp://0.0.0.0:1234
+            - --oci-worker-snapshotter=native
+            - --allow-insecure-entitlement
+            - network.host
+            - --allow-insecure-entitlement
+            - security.insecure
+          securityContext:
+            privileged: true
+          ports:
+            - containerPort: 1234
+              name: buildkitd
+          readinessProbe:
+            exec:
+              command:
+                - buildctl
+                - --addr
+                - unix:///run/buildkit/buildkitd.sock
+                - debug
+                - workers
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: buildkit-state
+              mountPath: /var/lib/buildkit
+      volumes:
+        - name: buildkit-state
+          emptyDir: {}

@@ -1,10 +1,20 @@
-- apiVersion: guardian/v1alpha1
-  kind: Intent
-  metadata:
+apiVersion: guardian/v1alpha1
+kind: Intent
+metadata:
     name: guardian-control-plane
-  spec:
+spec:
+    intentType: standard
+    joins:
+        - images
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: guardian-configs
+    locked: false
     assets:
-        - name: guardian-control-plane
+        - type: Compute
+          name: guardian-control-plane
+          version: 20260624-1558
           properties:
             env:
                 GUARDIAN_CLIENT_DISCOVERY_TOKEN: guardian-dev-token
@@ -39,11 +49,11 @@
                 requests:
                     cpu: 200m
                     memory: 256Mi
-          type: Compute
-          version: 20260616-1107
-        - dependsOn:
-            - guardian-control-plane
+        - type: LoadBalancer
           name: guardian-ui
+          version: 20260624-1558
+          dependsOn:
+            - guardian-control-plane
           properties:
             listeners:
                 - name: http
@@ -51,13 +61,3 @@
                   protocol: TCP
             targets:
                 - guardian-control-plane
-          type: LoadBalancer
-          version: 20260616-1107
-    intentType: standard
-    joins:
-        - images
-    locked: false
-    target:
-        cluster: k8s-main
-        namespace: guardian-configs
-    targetPusher: k8s-main

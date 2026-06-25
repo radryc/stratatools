@@ -12,7 +12,7 @@ spec:
     assets:
         - type: Compute
           name: minio
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: mirror.gcr.io/minio/minio:latest
             imagePullPolicy: IfNotPresent
@@ -26,7 +26,7 @@ spec:
                     memory: 256Mi
         - type: Compute
           name: fetcher-a
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: monofs-fetcher:latest
             imagePullPolicy: IfNotPresent
@@ -40,7 +40,7 @@ spec:
                     memory: 128Mi
         - type: Compute
           name: fetcher-b
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: monofs-fetcher:latest
             imagePullPolicy: IfNotPresent
@@ -54,7 +54,7 @@ spec:
                     memory: 128Mi
         - type: Compute
           name: search-index
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: monofs-search:latest
             imagePullPolicy: IfNotPresent
@@ -68,7 +68,7 @@ spec:
                     memory: 256Mi
         - type: Compute
           name: node-a
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: monofs-server:latest
             imagePullPolicy: IfNotPresent
@@ -82,7 +82,7 @@ spec:
                     memory: 256Mi
         - type: Compute
           name: node-b
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: monofs-server:latest
             imagePullPolicy: IfNotPresent
@@ -96,7 +96,7 @@ spec:
                     memory: 256Mi
         - type: Compute
           name: node-c
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: monofs-server:latest
             imagePullPolicy: IfNotPresent
@@ -110,7 +110,7 @@ spec:
                     memory: 256Mi
         - type: Compute
           name: node-d
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: monofs-server:latest
             imagePullPolicy: IfNotPresent
@@ -124,7 +124,7 @@ spec:
                     memory: 256Mi
         - type: Compute
           name: node-e
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: monofs-server:latest
             imagePullPolicy: IfNotPresent
@@ -138,7 +138,7 @@ spec:
                     memory: 256Mi
         - type: Compute
           name: router-a
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: monofs-router:latest
             imagePullPolicy: IfNotPresent
@@ -152,7 +152,7 @@ spec:
                     memory: 128Mi
         - type: Compute
           name: router-b
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             image: monofs-router:latest
             imagePullPolicy: IfNotPresent

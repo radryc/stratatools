@@ -12,9 +12,9 @@ spec:
     assets:
         - type: ImageBuild
           name: k8s-top-build
-          version: 20260616-1107
+          version: 20260624-1558
           properties:
             imageTar: /partitions/k8s-top/payloads/images/k8s-top.tar
             registry: registry.strata.local:5000
             repository: k8s-top
-            sourceImage: k8s-top:latest
+            sourceImage: k8s-top:d4a28ab

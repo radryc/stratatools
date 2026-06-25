@@ -32,7 +32,7 @@ class ImageDistributionTests(unittest.TestCase):
 
         commands = [call.args[0] for call in run_mock.call_args_list]
         self.assertIn(["docker", "tag", "demo:latest", "demo:sha256-1234"], commands)
-        self.assertNotIn(["docker", "push", "demo:sha256-1234"], commands)
+        self.assertIn(["docker", "push", "demo:sha256-1234"], commands)
         cluster_load_mock.assert_not_called()
 
     def test_partition_image_target_nodes_uses_payload_node_selector(self) -> None:
@@ -135,7 +135,7 @@ class ImageDistributionTests(unittest.TestCase):
             ["docker", "tag", "guardian-pusher-docker:latest", "guardian-pusher-docker:sha256-2222"],
             commands,
         )
-        self.assertNotIn(["docker", "push", "guardian-pusher-docker:sha256-2222"], commands)
+        self.assertIn(["docker", "push", "guardian-pusher-docker:sha256-2222"], commands)
 
     def test_cluster_load_force_reloads_even_when_present(self) -> None:
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:

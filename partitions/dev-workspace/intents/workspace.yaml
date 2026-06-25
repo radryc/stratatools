@@ -1,97 +1,95 @@
 apiVersion: guardian/v1alpha1
 kind: Intent
 metadata:
-  name: workspace
+    name: workspace
 spec:
-  intentType: standard
-  joins:
-  - images
-  targetPusher: k8s-main
-  target:
-    cluster: k8s-main
-    namespace: dev-workspace
-  locked: false
-  assets:
-  - type: Volume
-    name: workspace-data
-    version: 20260616-1105
-    properties:
-      accessMode: ReadWriteOnce
-      size: 20Gi
-  - type: Volume
-    name: monofs-state
-    version: 20260616-1105
-    properties:
-      accessMode: ReadWriteOnce
-      size: 10Gi
-  - type: Volume
-    name: monofs-cache
-    version: 20260616-1105
-    properties:
-      accessMode: ReadWriteOnce
-      size: 10Gi
-  - type: Config
-    name: ssh-authorized-keys
-    version: 20260616-1105
-    properties:
-      data:
-        authorized_keys: '# replace with your ssh public key to enable SSH access
-          to the dev workspace
-
-          '
-      format: text
-  - type: Compute
-    name: opencode
-    version: 20260616-1105
-    dependsOn:
-    - workspace-data
-    - monofs-state
-    - monofs-cache
-    - ssh-authorized-keys
-    payload:
-      k8s: /partitions/dev-workspace/payloads/workspace.k8s.yaml
-    properties:
-      capabilities:
-      - SYS_ADMIN
-      configMounts:
-      - config: ssh-authorized-keys
-        path: /etc/dev-workspace/ssh
-        readOnly: true
-      env:
-        GITFS_OVERLAY_DIR: /home/developer/.monofs/overlay
-        KUBE_NAMESPACE: dev-workspace
-        MONOFS_MOUNT: /mnt/monofs
-        MONOFS_ROUTER: monofs-external.lb-edge.svc.cluster.local:9090
-        OPENCODE_HOST: 0.0.0.0
-        OPENCODE_PORT: '8888'
-        ROUTER_ADDR: monofs-external.lb-edge.svc.cluster.local:9090
-        WORKSPACE_ROOT: /workspace
-      hostBindMounts:
-      - source: /dev/fuse
-        target: /dev/fuse
-      image: dev-workspace-opencode:sha256-d4ba4786596a96dd
-      imagePullPolicy: IfNotPresent
-      ports:
-      - containerPort: 8888
-        name: http
-        protocol: TCP
-        servicePort: 8888
-      - containerPort: 22
-        name: ssh
-        protocol: TCP
-        servicePort: 2222
-      privileged: true
-      resources:
-        limits:
-          cpu: '2'
-          memory: 4Gi
-        requests:
-          cpu: 500m
-          memory: 1Gi
-      volumeMounts:
-      - path: /workspace
-        volume: workspace-data
-      - path: /home/developer/.monofs
-        volume: monofs-state
-      - path: /var/cache/monofs
-        volume: monofs-cache
+    intentType: standard
+    joins:
+        - images
+    targetPusher: k8s-main
+    target:
+        cluster: k8s-main
+        namespace: dev-workspace
+    locked: false
+    assets:
+        - type: Volume
+          name: workspace-data
+          version: 20260624-1558
+          properties:
+            accessMode: ReadWriteOnce
+            size: 20Gi
+        - type: Volume
+          name: monofs-state
+          version: 20260624-1558
+          properties:
+            accessMode: ReadWriteOnce
+            size: 10Gi
+        - type: Volume
+          name: monofs-cache
+          version: 20260624-1558
+          properties:
+            accessMode: ReadWriteOnce
+            size: 10Gi
+        - type: Config
+          name: ssh-authorized-keys
+          version: 20260624-1558
+          properties:
+            data:
+                authorized_keys: |
+                    # replace with your ssh public key to enable SSH access to the dev workspace
+            format: text
+        - type: Compute
+          name: opencode
+          version: 20260624-1558
+          dependsOn:
+            - workspace-data
+            - monofs-state
+            - monofs-cache
+            - ssh-authorized-keys
+          payload:
+            k8s: /partitions/dev-workspace/payloads/workspace.k8s.yaml
+          properties:
+            capabilities:
+                - SYS_ADMIN
+            configMounts:
+                - config: ssh-authorized-keys
+                  path: /etc/dev-workspace/ssh
+                  readOnly: true
+            env:
+                GITFS_OVERLAY_DIR: /home/developer/.monofs/overlay
+                KUBE_NAMESPACE: dev-workspace
+                MONOFS_MOUNT: /mnt/monofs
+                MONOFS_ROUTER: monofs-external.lb-edge.svc.cluster.local:9090
+                OPENCODE_HOST: 0.0.0.0
+                OPENCODE_PORT: "8888"
+                ROUTER_ADDR: monofs-external.lb-edge.svc.cluster.local:9090
+                WORKSPACE_ROOT: /workspace
+            hostBindMounts:
+                - source: /dev/fuse
+                  target: /dev/fuse
+            image: dev-workspace-opencode:sha256-d4a5f1635d7f8e6c
+            imagePullPolicy: IfNotPresent
+            ports:
+                - containerPort: 8888
+                  name: http
+                  protocol: TCP
+                  servicePort: 8888
+                - containerPort: 22
+                  name: ssh
+                  protocol: TCP
+                  servicePort: 2222
+            privileged: true
+            resources:
+                limits:
+                    cpu: "2"
+                    memory: 4Gi
+                requests:
+                    cpu: 500m
+                    memory: 1Gi
+            volumeMounts:
+                - path: /workspace
+                  volume: workspace-data
+                - path: /home/developer/.monofs
+                  volume: monofs-state
+                - path: /var/cache/monofs
+                  volume: monofs-cache

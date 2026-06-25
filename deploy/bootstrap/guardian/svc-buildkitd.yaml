@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: buildkitd
+  namespace: ${GUARDIAN_NAMESPACE}
+  labels:
+    app: buildkitd
+spec:
+  type: ClusterIP
+  ports:
+    - port: 1234
+      targetPort: 1234
+      protocol: TCP
+      name: buildkitd
+  selector:
+    app: buildkitd

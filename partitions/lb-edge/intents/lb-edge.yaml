@@ -12,7 +12,7 @@ spec:
     assets:
         - type: Compute
           name: haproxy
-          version: 20260616-1107
+          version: 20260624-1558
           properties:
             existingDeploymentName: monofs-haproxy
             image: lb:latest
@@ -27,7 +27,7 @@ spec:
                     memory: 64Mi
         - type: Compute
           name: lb-k8s-agent
-          version: 20260616-1107
+          version: 20260624-1558
           properties:
             image: lb:latest
             imagePullPolicy: IfNotPresent
@@ -41,7 +41,7 @@ spec:
                     memory: 64Mi
         - type: Compute
           name: lb-port-sync
-          version: 20260616-1107
+          version: 20260624-1558
           properties:
             image: lb:latest
             imagePullPolicy: IfNotPresent

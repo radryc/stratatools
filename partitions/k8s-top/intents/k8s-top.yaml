@@ -14,7 +14,7 @@ spec:
     assets:
         - type: Compute
           name: k8s-top
-          version: 20260616-1107
+          version: 20260624-1558
           payload:
             k8s: /partitions/k8s-top/payloads/k8s-top.k8s.yaml
           properties:
