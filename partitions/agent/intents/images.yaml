@@ -12,25 +12,25 @@ spec:
     assets:
         - type: ImageBuild
           name: lagent-llm-build
-          version: 20260617-0821
+          version: 20260624-1558
           properties:
             imageTar: /partitions/agent/payloads/images/lagent-llm.tar
             registry: registry.strata.local:5000
             repository: lagent-llm
-            sourceImage: lagent-llm:latest
+            sourceImage: lagent-llm:d4a28ab
         - type: ImageBuild
           name: lagent-backend-build
-          version: 20260617-0821
+          version: 20260624-1558
           properties:
             imageTar: /partitions/agent/payloads/images/lagent-backend.tar
             registry: registry.strata.local:5000
             repository: lagent-backend
-            sourceImage: lagent-backend:latest
+            sourceImage: lagent-backend:d4a28ab
         - type: ImageBuild
           name: lagent-frontend-build
-          version: 20260617-0821
+          version: 20260624-1558
           properties:
             imageTar: /partitions/agent/payloads/images/lagent-frontend.tar
             registry: registry.strata.local:5000
             repository: lagent-frontend
-            sourceImage: lagent-frontend:latest
+            sourceImage: lagent-frontend:d4a28ab

@@ -1,4 +1,4 @@
-image: grafana/grafana:sha256-a03d9e604e4dba58
+image: grafana/grafana:latest
 serviceAnnotations:
   guardian.intent/expose: 'true'
   guardian.intent/service-name: grafana-edge

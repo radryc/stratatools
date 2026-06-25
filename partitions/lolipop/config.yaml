@@ -12,5 +12,5 @@ spec:
   labels:
     stack: k8s
     component: lolipop
-    topology: kubernetes
+    topology: docker
     managedBy: guardian

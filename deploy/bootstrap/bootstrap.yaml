@@ -93,6 +93,7 @@ guardian:
     registry: registry.strata.local:5000
     kanikoMirror: registry.strata.local:5000
     kanikoDockerConfigSecret: ""
+    buildKitImage: moby/buildkit:latest
 
   localRegistry:
     name: monofs-registry

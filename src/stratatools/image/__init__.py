@@ -573,11 +573,11 @@ def _partition_mapping(part: str, registry: str, ctx: str, dry_run: bool) -> dic
     for tag, _e, _c in BUILD_RECIPES.get(part, []):
         repo = tag.split(":", 1)[0]
         mode = _image_distribution_mode(part, tag, ctx)
-        mapping[tag] = _immutable_image_ref(tag, repo, registry, mode in {"cluster-load", "local-docker"}, dry_run)
+        mapping[tag] = _immutable_image_ref(tag, repo, registry, mode == "cluster-load", dry_run)
     for upstream, local in MIRROR_RECIPES.get(part, []):
         repo = local.split(":", 1)[0]
         mode = _image_distribution_mode(part, local, ctx)
-        mapping[upstream] = _immutable_image_ref(upstream, repo, registry, mode in {"cluster-load", "local-docker"}, dry_run)
+        mapping[upstream] = _immutable_image_ref(upstream, repo, registry, mode == "cluster-load", dry_run)
     return mapping
 
 
@@ -772,7 +772,7 @@ def cmd_push(partitions: list[str], registry: str, dry_run: bool) -> None:
             run(["docker", "tag", tag, target], dry_run=dry_run)
             if mode == "cluster-load":
                 _cluster_load(target, dry_run, nodes=_partition_image_target_nodes(part, tag, dry_run))
-            elif mode == "registry-push":
+            elif mode in {"registry-push", "local-docker"}:
                 run(["docker", "push", target], dry_run=dry_run)
         for upstream, local in MIRROR_RECIPES.get(part, []):
             target = mapping[upstream]
@@ -780,7 +780,7 @@ def cmd_push(partitions: list[str], registry: str, dry_run: bool) -> None:
             run(["docker", "tag", upstream, target], dry_run=dry_run)
             if mode == "cluster-load":
                 _cluster_load(target, dry_run, nodes=_partition_image_target_nodes(part, local, dry_run))
-            elif mode == "registry-push":
+            elif mode in {"registry-push", "local-docker"}:
                 run(["docker", "push", target], dry_run=dry_run)
 
 

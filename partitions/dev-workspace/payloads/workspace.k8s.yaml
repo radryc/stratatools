@@ -1,4 +1,4 @@
-image: dev-workspace-opencode:sha256-d4ba4786596a96dd
+image: dev-workspace-opencode:sha256-d4a5f1635d7f8e6c
 serviceAnnotations:
   guardian.intent/expose: 'true'
   guardian.intent/service-name: opencode-edge

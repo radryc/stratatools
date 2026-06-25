@@ -14,7 +14,7 @@ spec:
     assets:
         - type: Config
           name: collector-config
-          version: 20260616-1108
+          version: 20260624-1558
           properties:
             data:
                 otel-collector.yaml: |
@@ -149,7 +149,7 @@ spec:
             format: yaml
         - type: Compute
           name: collector
-          version: 20260616-1108
+          version: 20260624-1558
           dependsOn:
             - collector-config
           payload:
@@ -165,7 +165,7 @@ spec:
             env:
                 DOCTOR_OTLP_ENDPOINT: k8s-svc-compute-k8s-main-doctor-doctor-ingest-ingest.doctor.svc.cluster.local:4317
                 DOCTOR_TENANT: default
-            image: otel/opentelemetry-collector-contrib:sha256-923eb1cfae32fe09
+            image: otel/opentelemetry-collector-contrib:latest
             imagePullPolicy: IfNotPresent
             ports:
                 - containerPort: 4317

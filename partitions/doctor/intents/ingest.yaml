@@ -14,13 +14,13 @@ spec:
     assets:
         - type: Volume
           name: ingest-data
-          version: 20260616-1248
+          version: 20260624-1558
           properties:
             accessMode: ReadWriteOnce
             size: 20Gi
         - type: Compute
           name: ingest
-          version: 20260616-1248
+          version: 20260624-1558
           dependsOn:
             - ingest-data
           payload:
@@ -70,7 +70,7 @@ spec:
                   volume: ingest-data
         - type: LoadBalancer
           name: ingest-edge
-          version: 20260616-1248
+          version: 20260624-1558
           dependsOn:
             - ingest
           payload:

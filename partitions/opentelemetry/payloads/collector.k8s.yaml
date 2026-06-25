@@ -1,4 +1,4 @@
-image: otel/opentelemetry-collector-contrib:sha256-923eb1cfae32fe09
+image: otel/opentelemetry-collector-contrib:latest
 serviceAnnotations:
   guardian.intent/expose: 'true'
   guardian.intent/service-name: otel-edge

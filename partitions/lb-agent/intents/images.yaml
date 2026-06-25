@@ -12,7 +12,7 @@ spec:
     assets:
         - type: ImageBuild
           name: lb-build
-          version: 20260612-1330
+          version: 20260624-1558
           properties:
             dockerfile: Dockerfile
             platform: linux/amd64
